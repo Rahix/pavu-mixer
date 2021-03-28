@@ -1,0 +1,3 @@
+(fp_lib_table
+  (lib (name Pavu-Mixer-Prototype)(type KiCad)(uri ${KIPRJMOD}/Pavu-Mixer-Lib.pretty)(options "")(descr ""))
+)

@@ -1,0 +1,3 @@
+(sym_lib_table
+  (lib (name Pavu-Mixer)(type Legacy)(uri ${KIPRJMOD}/Pavu-Mixer.lib)(options "")(descr ""))
+)
