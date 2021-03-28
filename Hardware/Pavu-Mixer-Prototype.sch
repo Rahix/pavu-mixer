@@ -137,45 +137,75 @@ $EndComp
 $Comp
 L Mechanical:MountingHole_Pad H1
 U 1 1 6064EF96
-P 950 6500
-F 0 "H1" V 904 6650 50  0001 L CNN
-F 1 "MountingHole_Pad" V 995 6650 50  0001 L CNN
-F 2 "MountingHole:MountingHole_3.5mm_Pad_Via" H 950 6500 50  0001 C CNN
-F 3 "~" H 950 6500 50  0001 C CNN
-	1    950  6500
-	0    1    1    0   
+P 1050 7100
+F 0 "H1" V 1004 7250 50  0001 L CNN
+F 1 "MountingHole_Pad" V 1095 7250 50  0001 L CNN
+F 2 "MountingHole:MountingHole_3.5mm_Pad_Via" H 1050 7100 50  0001 C CNN
+F 3 "~" H 1050 7100 50  0001 C CNN
+	1    1050 7100
+	0    -1   -1   0   
 $EndComp
 $Comp
 L Mechanical:MountingHole_Pad H2
 U 1 1 6064FA16
-P 950 6700
-F 0 "H2" V 904 6850 50  0001 L CNN
-F 1 "MountingHole_Pad" V 995 6850 50  0001 L CNN
-F 2 "MountingHole:MountingHole_3.5mm_Pad_Via" H 950 6700 50  0001 C CNN
-F 3 "~" H 950 6700 50  0001 C CNN
-	1    950  6700
-	0    1    1    0   
+P 1050 6900
+F 0 "H2" V 1004 7050 50  0001 L CNN
+F 1 "MountingHole_Pad" V 1095 7050 50  0001 L CNN
+F 2 "MountingHole:MountingHole_3.5mm_Pad_Via" H 1050 6900 50  0001 C CNN
+F 3 "~" H 1050 6900 50  0001 C CNN
+	1    1050 6900
+	0    -1   -1   0   
 $EndComp
 $Comp
 L Mechanical:MountingHole_Pad H3
 U 1 1 6064FDAE
-P 950 6900
-F 0 "H3" V 904 7050 50  0001 L CNN
-F 1 "MountingHole_Pad" V 995 7050 50  0001 L CNN
-F 2 "MountingHole:MountingHole_3.5mm_Pad_Via" H 950 6900 50  0001 C CNN
-F 3 "~" H 950 6900 50  0001 C CNN
-	1    950  6900
-	0    1    1    0   
+P 1050 6700
+F 0 "H3" V 1004 6850 50  0001 L CNN
+F 1 "MountingHole_Pad" V 1095 6850 50  0001 L CNN
+F 2 "MountingHole:MountingHole_3.5mm_Pad_Via" H 1050 6700 50  0001 C CNN
+F 3 "~" H 1050 6700 50  0001 C CNN
+	1    1050 6700
+	0    -1   -1   0   
 $EndComp
 $Comp
 L Mechanical:MountingHole_Pad H4
 U 1 1 60650038
-P 950 7100
-F 0 "H4" V 904 7250 50  0001 L CNN
-F 1 "MountingHole_Pad" V 995 7250 50  0001 L CNN
-F 2 "MountingHole:MountingHole_3.5mm_Pad_Via" H 950 7100 50  0001 C CNN
-F 3 "~" H 950 7100 50  0001 C CNN
-	1    950  7100
-	0    1    1    0   
+P 1050 6500
+F 0 "H4" V 1004 6650 50  0001 L CNN
+F 1 "MountingHole_Pad" V 1095 6650 50  0001 L CNN
+F 2 "MountingHole:MountingHole_3.5mm_Pad_Via" H 1050 6500 50  0001 C CNN
+F 3 "~" H 1050 6500 50  0001 C CNN
+	1    1050 6500
+	0    -1   -1   0   
 $EndComp
+$Comp
+L power:GND #PWR?
+U 1 1 6065DC8E
+P 1250 7200
+F 0 "#PWR?" H 1250 6950 50  0001 C CNN
+F 1 "GND" H 1255 7027 50  0000 C CNN
+F 2 "" H 1250 7200 50  0001 C CNN
+F 3 "" H 1250 7200 50  0001 C CNN
+	1    1250 7200
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	1150 6500 1250 6500
+Wire Wire Line
+	1250 6500 1250 6700
+Wire Wire Line
+	1150 6700 1250 6700
+Connection ~ 1250 6700
+Wire Wire Line
+	1250 6700 1250 6900
+Wire Wire Line
+	1150 6900 1250 6900
+Connection ~ 1250 6900
+Wire Wire Line
+	1250 6900 1250 7100
+Wire Wire Line
+	1150 7100 1250 7100
+Connection ~ 1250 7100
+Wire Wire Line
+	1250 7100 1250 7200
 $EndSCHEMATC
