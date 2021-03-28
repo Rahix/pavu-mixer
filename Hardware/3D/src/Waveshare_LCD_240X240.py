@@ -67,6 +67,8 @@ assembly = (
     .add(display().translate([24.9, 0, 11.6]), color=cq.Color("black"))
     .add(spacer().translate([40, 13, 0]), color=cq.Color("gray"))
     .add(spacer().translate([40, -13, 0]), color=cq.Color("gray"))
+    .add(spacer().translate([0, 13, 0]), color=cq.Color("gray"))
+    .add(spacer().translate([0, -13, 0]), color=cq.Color("gray"))
 )
 
 assembly.save("../Waveshare_LCD_240X240.step")
