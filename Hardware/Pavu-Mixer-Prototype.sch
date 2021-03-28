@@ -296,4 +296,15 @@ F 3 "~" H 3950 1000 50  0001 C CNN
 	1    3950 1000
 	0    -1   -1   0   
 $EndComp
+$Comp
+L Pavu-Mixer:Waveshare_LCD_240X240 DISP1
+U 1 1 60681BDD
+P 7000 1250
+F 0 "DISP1" H 7178 1301 50  0000 L CNN
+F 1 "Waveshare_LCD_240X240" H 7178 1210 50  0000 L CNN
+F 2 "Pavu-Mixer-Prototype:Waveshare_LCD_240X240" H 7000 1250 50  0001 C CNN
+F 3 "" H 7000 1250 50  0001 C CNN
+	1    7000 1250
+	1    0    0    -1  
+$EndComp
 $EndSCHEMATC
