@@ -1879,7 +1879,7 @@ U 1 1 616378AE
 P 1650 1800
 F 0 "J1" H 1700 2717 50  0000 C CNN
 F 1 "Conn_02x16_Counter_Clockwise" H 1700 2626 50  0000 C CNN
-F 2 "" H 1650 1800 50  0001 C CNN
+F 2 "Connector_PinHeader_2.54mm:PinHeader_2x16_P2.54mm_Vertical" H 1650 1800 50  0001 C CNN
 F 3 "~" H 1650 1800 50  0001 C CNN
 	1    1650 1800
 	1    0    0    -1  
