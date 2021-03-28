@@ -908,7 +908,7 @@
   )
 
   (module Pavu-Mixer-Prototype:SW_MEC_5GSH9 (layer F.Cu) (tedit 6060982E) (tstamp 6060FACB)
-    (at 147.5 102.5)
+    (at 147.5 105)
     (descr "MEC 5G single pole normally-open tactile switch")
     (tags "switch normally-open pushbutton push-button")
     (path /60633513)
