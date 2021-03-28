@@ -134,4 +134,48 @@ F 3 "http://www.apem.com/int/index.php?controller=attachment&id_attachment=488" 
 	1    5000 3000
 	1    0    0    -1  
 $EndComp
+$Comp
+L Mechanical:MountingHole_Pad H1
+U 1 1 6064EF96
+P 950 6500
+F 0 "H1" V 904 6650 50  0001 L CNN
+F 1 "MountingHole_Pad" V 995 6650 50  0001 L CNN
+F 2 "MountingHole:MountingHole_3.5mm_Pad_Via" H 950 6500 50  0001 C CNN
+F 3 "~" H 950 6500 50  0001 C CNN
+	1    950  6500
+	0    1    1    0   
+$EndComp
+$Comp
+L Mechanical:MountingHole_Pad H2
+U 1 1 6064FA16
+P 950 6700
+F 0 "H2" V 904 6850 50  0001 L CNN
+F 1 "MountingHole_Pad" V 995 6850 50  0001 L CNN
+F 2 "MountingHole:MountingHole_3.5mm_Pad_Via" H 950 6700 50  0001 C CNN
+F 3 "~" H 950 6700 50  0001 C CNN
+	1    950  6700
+	0    1    1    0   
+$EndComp
+$Comp
+L Mechanical:MountingHole_Pad H3
+U 1 1 6064FDAE
+P 950 6900
+F 0 "H3" V 904 7050 50  0001 L CNN
+F 1 "MountingHole_Pad" V 995 7050 50  0001 L CNN
+F 2 "MountingHole:MountingHole_3.5mm_Pad_Via" H 950 6900 50  0001 C CNN
+F 3 "~" H 950 6900 50  0001 C CNN
+	1    950  6900
+	0    1    1    0   
+$EndComp
+$Comp
+L Mechanical:MountingHole_Pad H4
+U 1 1 60650038
+P 950 7100
+F 0 "H4" V 904 7250 50  0001 L CNN
+F 1 "MountingHole_Pad" V 995 7250 50  0001 L CNN
+F 2 "MountingHole:MountingHole_3.5mm_Pad_Via" H 950 7100 50  0001 C CNN
+F 3 "~" H 950 7100 50  0001 C CNN
+	1    950  7100
+	0    1    1    0   
+$EndComp
 $EndSCHEMATC
