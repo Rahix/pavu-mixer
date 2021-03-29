@@ -1392,9 +1392,9 @@ Text GLabel 1250 1100 0    50   Input ~ 0
 DISP_BL
 Text GLabel 2150 1900 2    50   Input ~ 0
 MAINVOL_SER
-Text GLabel 2150 1800 2    50   Input ~ 0
-MAINVOL_SRCLK
 Text GLabel 2150 1700 2    50   Input ~ 0
+MAINVOL_SRCLK
+Text GLabel 2150 1800 2    50   Input ~ 0
 MAINVOL_RCLK
 Text GLabel 2150 1100 2    50   Input ~ 0
 VOL1
