@@ -1,4 +1,4 @@
-update=2021-03-29T02:37:29 CEST
+update=2021-03-29T14:00:36 CEST
 version=1
 last_client=kicad
 [general]
@@ -255,3 +255,13 @@ uViaDrill=0.2
 dPairWidth=0.12
 dPairGap=0.12
 dPairViaGap=0.25
+[schematic_editor]
+version=1
+PageLayoutDescrFile=
+PlotDirectoryName=../Eyecandy/
+SubpartIdSeparator=0
+SubpartFirstId=65
+NetFmtName=
+SpiceAjustPassiveValues=0
+LabSize=50
+ERC_TestSimilarLabels=1
