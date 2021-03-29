@@ -1813,7 +1813,7 @@ L Connector_Generic:Conn_02x16_Odd_Even J1
 U 1 1 616378AE
 P 1650 1800
 F 0 "J1" H 1700 2717 50  0000 C CNN
-F 1 "Conn_02x16_Counter_Clockwise" H 1700 2626 50  0000 C CNN
+F 1 "Conn_02x16_Odd_Even" H 1700 2626 50  0000 C CNN
 F 2 "Connector_PinHeader_2.54mm:PinHeader_2x16_P2.54mm_Vertical" H 1650 1800 50  0001 C CNN
 F 3 "~" H 1650 1800 50  0001 C CNN
 	1    1650 1800
@@ -2177,6 +2177,37 @@ Wire Wire Line
 	10150 5750 10400 5750
 Wire Wire Line
 	10200 5650 10400 5650
+$Comp
+L Device:R R35
+U 1 1 6229B90F
+P 2000 4350
+F 0 "R35" H 2150 4300 50  0000 C CNN
+F 1 "10k" H 2150 4400 50  0000 C CNN
+F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 1930 4350 50  0001 C CNN
+F 3 "~" H 2000 4350 50  0001 C CNN
+	1    2000 4350
+	-1   0    0    1   
+$EndComp
+$Comp
+L power:+3V3 #PWR028
+U 1 1 622BE135
+P 1650 4550
+F 0 "#PWR028" H 1650 4400 50  0001 C CNN
+F 1 "+3V3" H 1665 4723 50  0000 C CNN
+F 2 "" H 1650 4550 50  0001 C CNN
+F 3 "" H 1650 4550 50  0001 C CNN
+	1    1650 4550
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	1650 4550 1650 4600
+Wire Wire Line
+	1650 4600 2000 4600
+Wire Wire Line
+	2000 4150 2000 4200
+Connection ~ 2000 4150
+Wire Wire Line
+	2000 4500 2000 4600
 Wire Bus Line
 	3800 4650 3800 6200
 Wire Bus Line
