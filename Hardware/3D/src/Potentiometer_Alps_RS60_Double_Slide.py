@@ -96,7 +96,7 @@ def knob_inner():
         .box(1, 12, 4, centered=[True, True, False])
     )
 
-LEVER_POS = 0.75
+LEVER_POS = 0.25
 
 lever_x = -30 + 6.6 / 2 + LEVER_POS * (60 - 6.6)
 
