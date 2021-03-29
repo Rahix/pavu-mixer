@@ -2211,9 +2211,69 @@ Wire Notes Line
 Wire Notes Line
 	11050 6300 11050 750 
 Wire Bus Line
-	3950 4650 3950 6200
-Wire Bus Line
 	5350 4650 5350 6200
 Wire Bus Line
+	3950 4650 3950 6200
+Wire Bus Line
 	3800 4350 3800 6200
+Text Notes 650  5200 0    100  ~ 0
+I2C Pullups
+Wire Notes Line
+	650  5250 1450 5250
+Wire Notes Line
+	650  5950 650  5250
+Wire Notes Line
+	1450 5950 650  5950
+Wire Notes Line
+	1450 5250 1450 5950
+Wire Wire Line
+	1200 5850 1050 5850
+Wire Wire Line
+	1200 5700 1200 5850
+Wire Wire Line
+	1100 5750 1050 5750
+Wire Wire Line
+	1100 5700 1100 5750
+Wire Wire Line
+	1150 5400 1200 5400
+$Comp
+L power:+3V3 #PWR029
+U 1 1 625D5177
+P 1150 5400
+F 0 "#PWR029" H 1150 5250 50  0001 C CNN
+F 1 "+3V3" H 1000 5450 50  0000 C CNN
+F 2 "" H 1150 5400 50  0001 C CNN
+F 3 "" H 1150 5400 50  0001 C CNN
+	1    1150 5400
+	1    0    0    -1  
+$EndComp
+Connection ~ 1150 5400
+Wire Wire Line
+	1100 5400 1150 5400
+$Comp
+L Device:R R37
+U 1 1 625B3893
+P 1200 5550
+F 0 "R37" H 1050 5500 50  0000 C CNN
+F 1 "1k" H 1050 5600 50  0000 C CNN
+F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 1130 5550 50  0001 C CNN
+F 3 "~" H 1200 5550 50  0001 C CNN
+	1    1200 5550
+	-1   0    0    1   
+$EndComp
+$Comp
+L Device:R R36
+U 1 1 625B301F
+P 1100 5550
+F 0 "R36" H 1250 5500 50  0000 C CNN
+F 1 "1k" H 1250 5600 50  0000 C CNN
+F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 1030 5550 50  0001 C CNN
+F 3 "~" H 1100 5550 50  0001 C CNN
+	1    1100 5550
+	-1   0    0    1   
+$EndComp
+Text GLabel 1050 5850 0    50   Input ~ 0
+I2C_SDA
+Text GLabel 1050 5750 0    50   Input ~ 0
+I2C_SCL
 $EndSCHEMATC
