@@ -1378,17 +1378,17 @@ NoConn ~ 9100 1750
 NoConn ~ 9100 1650
 NoConn ~ 9100 1550
 NoConn ~ 9100 1350
-Text GLabel 1250 1100 0    50   Input ~ 0
-DISP_DIN
-Text GLabel 1250 1200 0    50   Input ~ 0
-DISP_CLK
-Text GLabel 1250 1300 0    50   Input ~ 0
-DISP_CS
-Text GLabel 1250 1400 0    50   Input ~ 0
-DISP_DC
-Text GLabel 1250 1500 0    50   Input ~ 0
-DISP_RST
 Text GLabel 1250 1600 0    50   Input ~ 0
+DISP_DIN
+Text GLabel 1250 1500 0    50   Input ~ 0
+DISP_CLK
+Text GLabel 1250 1400 0    50   Input ~ 0
+DISP_CS
+Text GLabel 1250 1300 0    50   Input ~ 0
+DISP_DC
+Text GLabel 1250 1200 0    50   Input ~ 0
+DISP_RST
+Text GLabel 1250 1100 0    50   Input ~ 0
 DISP_BL
 Text GLabel 2150 1900 2    50   Input ~ 0
 MAINVOL_SER
@@ -1874,7 +1874,7 @@ I2C_SDA
 Text Notes 3150 700  0    100  ~ 0
 Channel Indicators & Desync LEDs
 $Comp
-L Connector_Generic:Conn_02x16_Counter_Clockwise J1
+L Connector_Generic:Conn_02x16_Odd_Even J1
 U 1 1 616378AE
 P 1650 1800
 F 0 "J1" H 1700 2717 50  0000 C CNN
