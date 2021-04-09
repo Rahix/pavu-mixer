@@ -19,6 +19,11 @@ name = "display"
 test = false
 bench = false
 
+[[bin]]
+name = "pca9536-demo"
+test = false
+bench = false
+
 [profile.dev]
 opt-level = "s"
 lto = true
