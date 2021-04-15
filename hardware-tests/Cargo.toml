@@ -10,6 +10,7 @@ autobins = false
 [dependencies]
 cortex-m = "0.7.2"
 cortex-m-rt = "0.6.13"
+micromath = "1.1.1"
 panic-rtt-target = { version = "0.1.1", features = ["cortex-m"] }
 rtt-target = { version = "0.3.0", features = ["cortex-m"] }
 stm32f3xx-hal = { version = "0.6.1", features = ["stm32f303xc"] }
@@ -22,6 +23,11 @@ bench = false
 
 [[bin]]
 name = "pca9536-demo"
+test = false
+bench = false
+
+[[bin]]
+name = "shiftreg-demo"
 test = false
 bench = false
 
