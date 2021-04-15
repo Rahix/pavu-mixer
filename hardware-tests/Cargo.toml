@@ -36,6 +36,11 @@ name = "pwm-output"
 test = false
 bench = false
 
+[[bin]]
+name = "pca9555-demo"
+test = false
+bench = false
+
 [profile.dev]
 opt-level = "s"
 lto = true
