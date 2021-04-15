@@ -31,6 +31,11 @@ name = "shiftreg-demo"
 test = false
 bench = false
 
+[[bin]]
+name = "pwm-output"
+test = false
+bench = false
+
 [profile.dev]
 opt-level = "s"
 lto = true
