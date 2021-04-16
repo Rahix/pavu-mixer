@@ -41,6 +41,11 @@ name = "pca9555-demo"
 test = false
 bench = false
 
+[[bin]]
+name = "fader-main"
+test = false
+bench = false
+
 [profile.dev]
 opt-level = "s"
 lto = true
