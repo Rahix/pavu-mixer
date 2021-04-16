@@ -13,7 +13,9 @@ cortex-m-rt = "0.6.13"
 micromath = "1.1.1"
 panic-rtt-target = { version = "0.1.1", features = ["cortex-m"] }
 rtt-target = { version = "0.3.0", features = ["cortex-m"] }
-stm32f3xx-hal = { version = "0.6.1", features = ["stm32f303xc"] }
+stm32f3xx-hal = { version = "0.6.1", features = ["stm32f303xc", "stm32-usbd"] }
+usb-device = "0.2.8"
+usbd-serial = "0.1.1"
 waveshare-display = { path = "../waveshare-display/" }
 
 [[bin]]
@@ -43,6 +45,11 @@ bench = false
 
 [[bin]]
 name = "fader-main"
+test = false
+bench = false
+
+[[bin]]
+name = "usb-serial"
 test = false
 bench = false
 
