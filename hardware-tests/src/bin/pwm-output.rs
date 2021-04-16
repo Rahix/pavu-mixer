@@ -26,23 +26,32 @@ fn main() -> ! {
 
     let mut delay = stm32f3xx_hal::delay::Delay::new(cp.SYST, clocks);
 
-    let mut gpioa = dp.GPIOA.split(&mut rcc.ahb);
+    let mut gpioe = dp.GPIOE.split(&mut rcc.ahb);
 
-    let pa7 = gpioa.pa7.into_af2(&mut gpioa.moder, &mut gpioa.afrl);
+    let pe9 = gpioe.pe9.into_af2(&mut gpioe.moder, &mut gpioe.afrh);
+    let pe14 = gpioe.pe14.into_af2(&mut gpioe.moder, &mut gpioe.afrh);
 
-    let tim3_channels = hal::pwm::tim3(dp.TIM3, 1280, 100.hz(), &clocks);
-    let mut tim3_ch2 = tim3_channels.1.output_to_pa7(pa7);
-    tim3_ch2.enable();
+    let tim1_channels = hal::pwm::tim1(dp.TIM1, 1280, 100.hz(), &clocks);
+    let mut ch1 = tim1_channels.0.output_to_pe9(pe9);
+    let mut ch2 = tim1_channels.3.output_to_pe14(pe14);
+    ch1.enable();
+    ch2.enable();
 
     let mut frame = 0u64;
     loop {
         let wavy = (frame as f32 / 6.0).sin() * 0.5 + 0.5;
         let brightness_corrected = wavy.powf(2.8);
-        let value = (brightness_corrected * (tim3_ch2.get_max_duty() as f32 + 0.5)) as u16;
+        let value = (brightness_corrected * (ch1.get_max_duty() as f32 + 0.5)) as u16;
 
         rprintln!("{:6} - {:2}", frame, value);
 
-        tim3_ch2.set_duty(value);
+        ch1.set_duty(value);
+
+        let wavy = 1.0 - ((frame as f32 / 6.0).sin() * 0.5 + 0.5);
+        let brightness_corrected = wavy.powf(2.8);
+        let value = (brightness_corrected * (ch2.get_max_duty() as f32 + 0.5)) as u16;
+
+        ch2.set_duty(value);
 
         delay.delay_ms(10u16);
         frame += 1;
