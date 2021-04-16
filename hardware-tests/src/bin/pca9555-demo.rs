@@ -26,15 +26,16 @@ fn main() -> ! {
     let mut delay = stm32f3xx_hal::delay::Delay::new(cp.SYST, clocks);
 
     let mut gpiob = dp.GPIOB.split(&mut rcc.ahb);
+    let mut gpioa = dp.GPIOA.split(&mut rcc.ahb);
 
     let pins = (
         gpiob.pb6.into_af4(&mut gpiob.moder, &mut gpiob.afrl), // SCL
         gpiob.pb7.into_af4(&mut gpiob.moder, &mut gpiob.afrl), // SDA
     );
 
-    let pca_int = gpiob
-        .pb0
-        .into_floating_input(&mut gpiob.moder, &mut gpiob.pupdr);
+    let pca_int = gpioa
+        .pa10
+        .into_floating_input(&mut gpioa.moder, &mut gpioa.pupdr);
 
     let mut i2c = hal::i2c::I2c::new(dp.I2C1, pins, 100.khz(), clocks, &mut rcc.apb1);
 
