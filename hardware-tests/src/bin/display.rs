@@ -28,24 +28,25 @@ fn main() -> ! {
     let mut delay = stm32f3xx_hal::delay::Delay::new(cp.SYST, clocks);
 
     let mut gpioa = dp.GPIOA.split(&mut rcc.ahb);
+    let mut gpiob = dp.GPIOB.split(&mut rcc.ahb);
 
     let dc = gpioa
-        .pa0
+        .pa8
         .into_push_pull_output(&mut gpioa.moder, &mut gpioa.otyper);
     let rst = gpioa
-        .pa1
+        .pa9
         .into_push_pull_output(&mut gpioa.moder, &mut gpioa.otyper);
     let cs = gpioa
-        .pa3
+        .pa4
         .into_push_pull_output(&mut gpioa.moder, &mut gpioa.otyper);
 
     let sck = gpioa.pa5.into_af5(&mut gpioa.moder, &mut gpioa.afrl);
     let miso = gpioa.pa6.into_af5(&mut gpioa.moder, &mut gpioa.afrl);
     let mosi = gpioa.pa7.into_af5(&mut gpioa.moder, &mut gpioa.afrl);
 
-    let mut backlight = gpioa
-        .pa4
-        .into_push_pull_output(&mut gpioa.moder, &mut gpioa.otyper);
+    let mut backlight = gpiob
+        .pb0
+        .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
     backlight.set_high().unwrap();
 
     let spi = stm32f3xx_hal::spi::Spi::spi1(
