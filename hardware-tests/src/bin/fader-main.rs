@@ -37,23 +37,29 @@ fn main() -> ! {
     );
 
     let mut gpioa = dp.GPIOA.split(&mut rcc.ahb);
+    let mut gpiob = dp.GPIOB.split(&mut rcc.ahb);
+    let mut gpiof = dp.GPIOF.split(&mut rcc.ahb);
 
     // for the main fader
     let mut adc1_in1_pin = gpioa.pa0.into_analog(&mut gpioa.moder, &mut gpioa.pupdr);
+    let mut adc1_in2_pin = gpioa.pa1.into_analog(&mut gpioa.moder, &mut gpioa.pupdr);
+    let mut adc1_in3_pin = gpioa.pa2.into_analog(&mut gpioa.moder, &mut gpioa.pupdr);
+    let mut adc1_in4_pin = gpioa.pa3.into_analog(&mut gpioa.moder, &mut gpioa.pupdr);
+    let mut adc1_in5_pin = gpiof.pf4.into_analog(&mut gpiof.moder, &mut gpiof.pupdr);
 
     // for the output
-    let mut data = gpioa
-        .pa2
-        .into_push_pull_output(&mut gpioa.moder, &mut gpioa.otyper);
-    let mut dclk = gpioa
-        .pa6
-        .into_push_pull_output(&mut gpioa.moder, &mut gpioa.otyper);
-    let mut sclk = gpioa
-        .pa4
-        .into_push_pull_output(&mut gpioa.moder, &mut gpioa.otyper);
+    let mut data = gpiob
+        .pb15
+        .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
+    let mut dclk = gpiob
+        .pb13
+        .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
+    let mut sclk = gpiob
+        .pb12
+        .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
 
     loop {
-        let raw_value: u16 = adc1.read(&mut adc1_in1_pin).expect("Error reading adc1.");
+        let raw_value: u16 = adc1.read(&mut adc1_in5_pin).expect("Error reading adc1.");
 
         let mut main = raw_value;
         if main > 4080 {
