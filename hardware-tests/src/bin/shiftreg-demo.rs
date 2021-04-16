@@ -26,17 +26,17 @@ fn main() -> ! {
 
     let mut delay = stm32f3xx_hal::delay::Delay::new(cp.SYST, clocks);
 
-    let mut gpioa = dp.GPIOA.split(&mut rcc.ahb);
+    let mut gpiob = dp.GPIOB.split(&mut rcc.ahb);
 
-    let mut data = gpioa
-        .pa2
-        .into_push_pull_output(&mut gpioa.moder, &mut gpioa.otyper);
-    let mut dclk = gpioa
-        .pa6
-        .into_push_pull_output(&mut gpioa.moder, &mut gpioa.otyper);
-    let mut sclk = gpioa
-        .pa4
-        .into_push_pull_output(&mut gpioa.moder, &mut gpioa.otyper);
+    let mut data = gpiob
+        .pb15
+        .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
+    let mut dclk = gpiob
+        .pb13
+        .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
+    let mut sclk = gpiob
+        .pb12
+        .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
 
     let mut frame = 0u64;
     loop {
