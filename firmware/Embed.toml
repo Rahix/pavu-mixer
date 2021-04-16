@@ -1,0 +1,5 @@
+[default.general]
+chip = "STM32F303VCTx"
+
+[default.rtt]
+enabled = true
