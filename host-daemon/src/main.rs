@@ -1,9 +1,9 @@
 use anyhow::Context;
-use pulse::mainloop::standard as mainloop;
 use std::sync::atomic;
 
 mod config;
 mod connection;
+mod pa;
 
 /// Sample Spec for monitoring streams
 const SAMPLE_SPEC: pulse::sample::Spec = pulse::sample::Spec {
@@ -18,42 +18,7 @@ fn main() -> anyhow::Result<()> {
     let config: config::Config = confy::load("pavu-mixer")?;
     let mut pavu_mixer = connection::PavuMixer::connect(&config.connection)?;
 
-    let mut proplist = pulse::proplist::Proplist::new().context("failed creating proplist")?;
-    proplist
-        .set_str(
-            pulse::proplist::properties::APPLICATION_NAME,
-            "Pavu-Mixer Daemon",
-        )
-        .ok()
-        .context("failed setting proplist string")?;
-
-    let mut mainloop = mainloop::Mainloop::new().context("failed creating mainloop")?;
-
-    let mut context =
-        pulse::context::Context::new_with_proplist(&mainloop, "PavuMixerContext", &proplist)
-            .context("failed creating context")?;
-    context
-        .connect(None, pulse::context::FlagSet::NOFLAGS, None)
-        .context("failed connecting context")?;
-
-    // Wait for context
-    'wait_for_ctx: loop {
-        match mainloop.iterate(false) {
-            mainloop::IterateResult::Quit(_) | mainloop::IterateResult::Err(_) => {
-                panic!("Mainloop iteration error");
-            }
-            mainloop::IterateResult::Success(_) => (),
-        }
-        match context.get_state() {
-            pulse::context::State::Ready => {
-                break 'wait_for_ctx;
-            }
-            pulse::context::State::Terminated | pulse::context::State::Failed => {
-                panic!("Broken context");
-            }
-            _ => (),
-        }
-    }
+    let (mut mainloop, mut context) = pa::init().context("failed pulseaudio init")?;
 
     let channel_volumes = std::rc::Rc::new(std::cell::RefCell::new(None));
     let mut introspector = context.introspect();
@@ -70,18 +35,13 @@ fn main() -> anyhow::Result<()> {
 
     // Wait for channel info
     'wait_for_info: loop {
-        match mainloop.iterate(true) {
-            mainloop::IterateResult::Quit(_) | mainloop::IterateResult::Err(_) => {
-                panic!("Mainloop iteration error");
-            }
-            mainloop::IterateResult::Success(_) => (),
-        }
+        pa::iterate(&mut mainloop, true)?;
         match op.get_state() {
             pulse::operation::State::Done => {
                 break 'wait_for_info;
             }
             pulse::operation::State::Cancelled => {
-                panic!("Broken info cb");
+                panic!("info request was cancelled");
             }
             _ => (),
         }
@@ -125,12 +85,7 @@ fn main() -> anyhow::Result<()> {
 
     // Wait for stream
     'wait_for_stream: loop {
-        match mainloop.iterate(false) {
-            mainloop::IterateResult::Quit(_) | mainloop::IterateResult::Err(_) => {
-                panic!("Mainloop iteration error");
-            }
-            mainloop::IterateResult::Success(_) => (),
-        }
+        pa::iterate(&mut mainloop, true)?;
         match stream.get_state() {
             pulse::stream::State::Ready => {
                 break 'wait_for_stream;
@@ -144,12 +99,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut last_main_volume = u32::MAX;
     loop {
-        match mainloop.iterate(true) {
-            mainloop::IterateResult::Quit(_) | mainloop::IterateResult::Err(_) => {
-                panic!("Mainloop iteration error");
-            }
-            mainloop::IterateResult::Success(_) => (),
-        }
+        pa::iterate(&mut mainloop, true)?;
 
         let length = read_length.load(atomic::Ordering::SeqCst);
         if length > 0 {
