@@ -14,7 +14,14 @@ const SAMPLE_SPEC: pulse::sample::Spec = pulse::sample::Spec {
 
 fn main() -> anyhow::Result<()> {
     env_logger::builder()
-        .filter(Some("pavu_mixer_host"), log::LevelFilter::Info)
+        .filter(
+            Some("pavu_mixer_host"),
+            if cfg!(debug_assertions) {
+                log::LevelFilter::Debug
+            } else {
+                log::LevelFilter::Info
+            },
+        )
         .init();
 
     let config: config::Config = confy::load("pavu-mixer")?;
