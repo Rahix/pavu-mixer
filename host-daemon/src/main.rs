@@ -18,10 +18,10 @@ fn main() -> anyhow::Result<()> {
     let config: config::Config = confy::load("pavu-mixer")?;
     let mut pavu_mixer = connection::PavuMixer::connect(&config.connection)?;
 
-    let (mut mainloop, mut context) = pa::init().context("failed pulseaudio init")?;
+    let mut pa = pa::PulseInterface::init().context("failed pulseaudio init")?;
 
     let channel_volumes = std::rc::Rc::new(std::cell::RefCell::new(None));
-    let mut introspector = context.introspect();
+    let mut introspector = pa.context.introspect();
 
     let op = introspector.get_sink_info_by_index(1, {
         let channel_volumes = channel_volumes.clone();
@@ -35,7 +35,7 @@ fn main() -> anyhow::Result<()> {
 
     // Wait for channel info
     'wait_for_info: loop {
-        pa::iterate(&mut mainloop, true)?;
+        pa.iterate(true)?;
         match op.get_state() {
             pulse::operation::State::Done => {
                 break 'wait_for_info;
@@ -53,7 +53,7 @@ fn main() -> anyhow::Result<()> {
         .take()
         .expect("callback done but no channel_volumes set");
 
-    let mut stream = pulse::stream::Stream::new(&mut context, "Peak Detect", &SAMPLE_SPEC, None)
+    let mut stream = pulse::stream::Stream::new(&mut pa.context, "Peak Detect", &SAMPLE_SPEC, None)
         .context("failed creating monitoring stream")?;
 
     // Select which sink-input to monitor
@@ -85,7 +85,7 @@ fn main() -> anyhow::Result<()> {
 
     // Wait for stream
     'wait_for_stream: loop {
-        pa::iterate(&mut mainloop, true)?;
+        pa.iterate(true)?;
         match stream.get_state() {
             pulse::stream::State::Ready => {
                 break 'wait_for_stream;
@@ -99,7 +99,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut last_main_volume = u32::MAX;
     loop {
-        pa::iterate(&mut mainloop, true)?;
+        pa.iterate(true)?;
 
         let length = read_length.load(atomic::Ordering::SeqCst);
         if length > 0 {
