@@ -5,7 +5,7 @@ mod config;
 mod connection;
 
 fn main() {
-    let config = config::Config::default();
+    let config: config::Config = confy::load("pavu-mixer").unwrap();
     let mut pavu_mixer = connection::PavuMixer::connect(&config.connection).unwrap();
 
     let ss = pulse::sample::Spec {

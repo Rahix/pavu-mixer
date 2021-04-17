@@ -14,3 +14,4 @@ serde = { version = "1.0.125", features = ["derive"] }
 toml = "0.5.8"
 anyhow = "1.0.40"
 log = "0.4.14"
+confy = "0.4.0"
