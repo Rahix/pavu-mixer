@@ -1,3 +1,4 @@
+use anyhow::Context;
 use pulse::mainloop::standard as mainloop;
 use std::sync::atomic;
 
@@ -16,22 +17,23 @@ fn main() -> anyhow::Result<()> {
         rate: 25,
     };
 
-    let mut proplist = pulse::proplist::Proplist::new().unwrap();
+    let mut proplist = pulse::proplist::Proplist::new().context("failed creating proplist")?;
     proplist
         .set_str(
             pulse::proplist::properties::APPLICATION_NAME,
             "Pavu-Mixer Daemon",
         )
-        .unwrap();
+        .ok()
+        .context("failed setting proplist string")?;
 
-    let mut mainloop = mainloop::Mainloop::new().unwrap();
+    let mut mainloop = mainloop::Mainloop::new().context("failed creating mainloop")?;
 
     let mut context =
         pulse::context::Context::new_with_proplist(&mainloop, "PavuMixerContext", &proplist)
-            .unwrap();
+            .context("failed creating context")?;
     context
         .connect(None, pulse::context::FlagSet::NOFLAGS, None)
-        .unwrap();
+        .context("failed connecting context")?;
 
     // Wait for context
     'wait_for_ctx: loop {
@@ -85,9 +87,13 @@ fn main() -> anyhow::Result<()> {
     }
 
     // get the volumes out of the refcell
-    let mut channel_volumes = channel_volumes.borrow_mut().take().unwrap();
+    let mut channel_volumes = channel_volumes
+        .borrow_mut()
+        .take()
+        .expect("callback done but no channel_volumes set");
 
-    let mut stream = pulse::stream::Stream::new(&mut context, "Peak Detect", &ss, None).unwrap();
+    let mut stream = pulse::stream::Stream::new(&mut context, "Peak Detect", &ss, None)
+        .context("failed creating monitoring stream")?;
 
     // Select which sink-input to monitor
     // stream.set_monitor_stream(0).unwrap();
@@ -114,7 +120,7 @@ fn main() -> anyhow::Result<()> {
 
     stream
         .connect_record(Some("2"), Some(&stream_attrs), stream_flags)
-        .unwrap();
+        .context("failed connecting monitoring stream")?;
 
     // Wait for stream
     'wait_for_stream: loop {
@@ -147,21 +153,26 @@ fn main() -> anyhow::Result<()> {
         let length = read_length.load(atomic::Ordering::SeqCst);
         if length > 0 {
             'peekloop: loop {
-                match stream.peek().unwrap() {
+                match stream
+                    .peek()
+                    .context("failed reading from monitoring stream")?
+                {
                     pulse::stream::PeekResult::Empty => break 'peekloop,
-                    pulse::stream::PeekResult::Hole(_) => stream.discard().unwrap(),
+                    pulse::stream::PeekResult::Hole(_) => {
+                        stream.discard().context("failed dropping fragments")?
+                    }
                     pulse::stream::PeekResult::Data(d) => {
                         use std::convert::TryInto;
                         let buf: [u8; 4] = d[(d.len() - std::mem::size_of::<f32>())..]
                             .try_into()
-                            .unwrap();
+                            .expect("impossible");
                         let v = f32::from_ne_bytes(buf);
 
-                        stream.discard().unwrap();
+                        stream.discard().context("failed dropping fragments")?;
 
                         pavu_mixer
                             .send(common::HostMessage::UpdatePeak(common::Channel::Main, v))
-                            .unwrap();
+                            .context("failed updating main channel peak")?;
                     }
                 }
             }
@@ -169,7 +180,7 @@ fn main() -> anyhow::Result<()> {
         }
 
         // read main volume from usb
-        if let Some(msg) = pavu_mixer.try_recv().unwrap() {
+        if let Some(msg) = pavu_mixer.try_recv()? {
             match msg {
                 common::DeviceMessage::UpdateVolume(common::Channel::Main, vol) => {
                     let vol = vol.clamp(0.0, 1.0);
