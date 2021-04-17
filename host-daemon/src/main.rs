@@ -1,59 +1,12 @@
 use pulse::mainloop::standard as mainloop;
 use std::sync::atomic;
 
+mod config;
+mod connection;
+
 fn main() {
-    let mut found_device = None;
-    let mut found_iface = None;
-    let mut found_setting = None;
-    let mut found_read_endpoint = None;
-    let mut found_write_endpoint = None;
-    'loop_devices: for device in rusb::DeviceList::new().unwrap().iter() {
-        // find a device with the appropriate vendor class
-        if let Ok(config) = device.active_config_descriptor() {
-            for interface in config.interfaces() {
-                for desc in interface.descriptors() {
-                    match (
-                        desc.class_code(),
-                        desc.sub_class_code(),
-                        desc.protocol_code(),
-                    ) {
-                        (0xff, 0xc3, 0xc3) => {
-                            found_device = Some(device);
-                            found_iface = Some(interface.number());
-                            found_setting = Some(desc.setting_number());
-
-                            // get read and write endpoints
-                            for endpoint_desc in desc.endpoint_descriptors() {
-                                match endpoint_desc.direction() {
-                                    rusb::Direction::In => {
-                                        found_read_endpoint = Some(endpoint_desc.address())
-                                    }
-                                    rusb::Direction::Out => {
-                                        found_write_endpoint = Some(endpoint_desc.address())
-                                    }
-                                }
-                            }
-
-                            break 'loop_devices;
-                        }
-                        _ => (),
-                    }
-                }
-            }
-        }
-    }
-    let usb_device = dbg!(found_device.unwrap());
-    let usb_iface = found_iface.unwrap();
-    let usb_setting = found_setting.unwrap();
-    let usb_read_endpoint = found_read_endpoint.unwrap();
-    let usb_write_endpoint = found_write_endpoint.unwrap();
-    let mut usb_handle = usb_device.open().unwrap();
-
-    // configure endpoints
-    usb_handle.claim_interface(usb_iface).unwrap();
-    usb_handle
-        .set_alternate_setting(usb_iface, usb_setting)
-        .unwrap();
+    let config = config::Config::default();
+    let mut pavu_mixer = connection::PavuMixer::connect(&config.connection).unwrap();
 
     let ss = pulse::sample::Spec {
         format: pulse::sample::Format::FLOAT32NE,
@@ -204,14 +157,8 @@ fn main() {
 
                         stream.discard().unwrap();
 
-                        let msg = common::HostMessage::UpdatePeak(common::Channel::Main, v);
-                        let bytes = postcard::to_allocvec(&msg).unwrap();
-                        usb_handle
-                            .write_interrupt(
-                                usb_write_endpoint,
-                                &bytes,
-                                std::time::Duration::from_secs(100),
-                            )
+                        pavu_mixer
+                            .send(common::HostMessage::UpdatePeak(common::Channel::Main, v))
                             .unwrap();
                     }
                 }
@@ -220,41 +167,26 @@ fn main() {
         }
 
         // read main volume from usb
-        let mut buf = [0x00; 64];
-        match usb_handle.read_interrupt(
-            usb_read_endpoint,
-            &mut buf,
-            std::time::Duration::from_secs(0),
-        ) {
-            Ok(len) if len > 0 => {
-                let bytes = &buf[0..len];
-                if let Ok(msg) = postcard::from_bytes::<common::DeviceMessage>(bytes) {
-                    match msg {
-                        common::DeviceMessage::UpdateVolume(common::Channel::Main, vol) => {
-                            let vol = vol.clamp(0.0, 1.0);
-                            let volume: u32 = (vol * 100.5) as u32;
-                            if volume != last_main_volume {
-                                println!("New Main Volume: {}", volume);
+        if let Some(msg) = pavu_mixer.try_recv().unwrap() {
+            match msg {
+                common::DeviceMessage::UpdateVolume(common::Channel::Main, vol) => {
+                    let vol = vol.clamp(0.0, 1.0);
+                    let volume: u32 = (vol * 100.5) as u32;
+                    if volume != last_main_volume {
+                        println!("New Main Volume: {}", volume);
 
-                                let pa_volume = pulse::volume::Volume(
-                                    (pulse::volume::Volume::NORMAL.0 as f32 * vol) as u32,
-                                );
-                                channel_volumes.set(channel_volumes.len(), pa_volume);
+                        let pa_volume = pulse::volume::Volume(
+                            (pulse::volume::Volume::NORMAL.0 as f32 * vol) as u32,
+                        );
+                        channel_volumes.set(channel_volumes.len(), pa_volume);
 
-                                introspector.set_sink_volume_by_index(1, &channel_volumes, None);
+                        introspector.set_sink_volume_by_index(1, &channel_volumes, None);
 
-                                last_main_volume = volume;
-                            }
-                        }
-                        m => println!("Ignored message: {:?}", m),
+                        last_main_volume = volume;
                     }
-                } else {
-                    println!("Could not decode: {:?}", bytes);
                 }
+                m => println!("Ignored message: {:?}", m),
             }
-            Ok(_) => (),
-            Err(rusb::Error::Timeout) => (),
-            Err(e) => panic!("USB read error: {}", e),
         }
     }
 }

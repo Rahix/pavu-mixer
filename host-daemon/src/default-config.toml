@@ -1,0 +1,14 @@
+[connection]
+sudo-hack = false
+
+[channel-1.property-matches]
+"media.role" = "music"
+
+[channel-2.property-matches]
+"application.name" = "Firefox"
+
+[channel-3.property-matches]
+"application.name" = "Chromium"
+
+[channel-4.property-matches]
+"application.name" = "Team Fortress 2"
