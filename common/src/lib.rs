@@ -14,3 +14,8 @@ pub enum Channel {
 pub enum HostMessage {
     UpdatePeak(Channel, f32),
 }
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Clone, Copy)]
+pub enum DeviceMessage {
+    UpdateVolume(Channel, f32),
+}

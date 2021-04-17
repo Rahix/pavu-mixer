@@ -47,8 +47,8 @@ impl<'a, B: usb_device::bus::UsbBus> usb_device::class::UsbClass<B> for PavuMixe
 fn main() -> ! {
     rtt_target::rtt_init_print!();
 
-    let dp = pac::Peripherals::take().unwrap();
-    let cp = cortex_m::Peripherals::take().unwrap();
+    let mut dp = pac::Peripherals::take().unwrap();
+    let _cp = cortex_m::Peripherals::take().unwrap();
 
     let mut flash = dp.FLASH.constrain();
     let mut rcc = dp.RCC.constrain();
@@ -62,7 +62,21 @@ fn main() -> ! {
 
     assert!(clocks.usbclk_valid());
 
+    let mut adc1 = hal::adc::Adc::adc1(
+        dp.ADC1, // The ADC we are going to control
+        // The following is only needed to make sure the clock signal for the ADC is set up
+        // correctly.
+        &mut dp.ADC1_2,
+        &mut rcc.ahb,
+        hal::adc::CkMode::default(),
+        clocks,
+    );
+
+    rprintln!("ADC initialized.");
+
     let mut gpioa = dp.GPIOA.split(&mut rcc.ahb);
+    let mut gpiob = dp.GPIOB.split(&mut rcc.ahb);
+    let mut gpiof = dp.GPIOF.split(&mut rcc.ahb);
 
     // F3 Discovery board has a pull-up resistor on the D+ line.
     // Pull the D+ pin down to send a RESET condition to the USB bus.
@@ -95,8 +109,6 @@ fn main() -> ! {
 
     rprintln!("USB device initialized.");
 
-    let mut gpiob = dp.GPIOB.split(&mut rcc.ahb);
-
     let mut data = gpiob
         .pb15
         .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
@@ -108,6 +120,8 @@ fn main() -> ! {
         .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
 
     rprintln!("GPIOs initialized.");
+
+    let mut adc1_in5_pin = gpiof.pf4.into_analog(&mut gpiof.moder, &mut gpiof.pupdr);
 
     loop {
         if !usb_dev.poll(&mut [&mut usb_class]) {
@@ -147,6 +161,28 @@ fn main() -> ! {
                 rprintln!("Error: {:?}", e);
             }
             _ => (),
+        }
+
+        // check main fader and send back value
+        let raw_value: u16 = adc1.read(&mut adc1_in5_pin).expect("Error reading adc1.");
+        let mut main = raw_value;
+        if main > 4080 {
+            main = 4080;
+        }
+        if main < 8 {
+            main = 8;
+        }
+        main -= 8;
+        let main = main as f32 / ((4080 - 8) as f32);
+
+        let msg = common::DeviceMessage::UpdateVolume(common::Channel::Main, main);
+        let mut buf = [0x00; 64];
+        let bytes = postcard::to_slice(&msg, &mut buf).unwrap();
+
+        match usb_class.write(bytes) {
+            Ok(_) => (),
+            Err(usb_device::UsbError::WouldBlock) => (),
+            Err(e) => panic!("write error: {:?}", e),
         }
     }
 }
