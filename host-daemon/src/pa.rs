@@ -168,8 +168,7 @@ impl Channel {
 
         // TODO: do DONT_INHIBIT_AUTO_SUSPEND and DONT_MOVE properly
         let flags = pulse::stream::FlagSet::PEAK_DETECT
-            | pulse::stream::FlagSet::ADJUST_LATENCY
-            | pulse::stream::FlagSet::DONT_MOVE;
+            | pulse::stream::FlagSet::ADJUST_LATENCY;
 
         let attrs = pulse::def::BufferAttr {
             fragsize: std::mem::size_of::<f32>() as u32,

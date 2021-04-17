@@ -59,7 +59,7 @@ fn main() -> anyhow::Result<()> {
         .take()
         .expect("callback done but no channel_volumes set");
 
-    let mut channel = pa.create_monitor_stream(Some(2), None)?;
+    let mut channel = pa.create_monitor_stream(None, None)?;
 
     let mut last_main_volume = u32::MAX;
     loop {
