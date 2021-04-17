@@ -168,7 +168,7 @@ fn main() {
                     let v = f32::from_ne_bytes(buf);
                     stream.discard().unwrap();
 
-                    let msg = common::HostMessage::UpdateVolume(common::Channel::Main, v);
+                    let msg = common::HostMessage::UpdatePeak(common::Channel::Main, v);
                     let bytes = postcard::to_allocvec(&msg).unwrap();
                     usb_handle
                         .write_interrupt(

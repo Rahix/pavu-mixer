@@ -119,7 +119,7 @@ fn main() -> ! {
             Ok(buf) if buf.len() > 0 => {
                 if let Ok(msg) = postcard::from_bytes::<common::HostMessage>(buf) {
                     match msg {
-                        common::HostMessage::UpdateVolume(common::Channel::Main, v) => {
+                        common::HostMessage::UpdatePeak(common::Channel::Main, v) => {
                             let value = (v * 20.5) as u32;
 
                             for i in 0..20 {

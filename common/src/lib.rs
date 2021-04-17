@@ -12,5 +12,5 @@ pub enum Channel {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Clone, Copy)]
 pub enum HostMessage {
-    UpdateVolume(Channel, f32),
+    UpdatePeak(Channel, f32),
 }
