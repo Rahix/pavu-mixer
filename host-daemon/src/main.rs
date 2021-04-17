@@ -1,8 +1,6 @@
 use pulse::mainloop::standard as mainloop;
 use std::sync::atomic;
 
-use rusb::UsbContext;
-
 fn main() {
     let mut found_device = None;
     let mut found_iface = None;
@@ -99,6 +97,41 @@ fn main() {
         }
     }
 
+    let channel_volumes = std::rc::Rc::new(std::cell::RefCell::new(None));
+    let mut introspector = context.introspect();
+
+    let op = introspector.get_sink_info_by_index(1, {
+        let channel_volumes = channel_volumes.clone();
+        move |res| match res {
+            pulse::callbacks::ListResult::Item(i) => {
+                *channel_volumes.borrow_mut() = Some(i.volume.clone());
+            }
+            _ => (),
+        }
+    });
+
+    // Wait for channel info
+    'wait_for_info: loop {
+        match mainloop.iterate(true) {
+            mainloop::IterateResult::Quit(_) | mainloop::IterateResult::Err(_) => {
+                panic!("Mainloop iteration error");
+            }
+            mainloop::IterateResult::Success(_) => (),
+        }
+        match op.get_state() {
+            pulse::operation::State::Done => {
+                break 'wait_for_info;
+            }
+            pulse::operation::State::Cancelled => {
+                panic!("Broken info cb");
+            }
+            _ => (),
+        }
+    }
+
+    // get the volumes out of the refcell
+    let mut channel_volumes = channel_volumes.borrow_mut().take().unwrap();
+
     let mut stream = pulse::stream::Stream::new(&mut context, "Peak Detect", &ss, None).unwrap();
 
     // Select which sink-input to monitor
@@ -147,6 +180,7 @@ fn main() {
         }
     }
 
+    let mut last_main_volume = u32::MAX;
     loop {
         match mainloop.iterate(true) {
             mainloop::IterateResult::Quit(_) | mainloop::IterateResult::Err(_) => {
@@ -179,6 +213,44 @@ fn main() {
                         .unwrap();
                 }
             }
+        }
+
+        // read main volume from usb
+        let mut buf = [0x00; 64];
+        match usb_handle.read_interrupt(
+            usb_read_endpoint,
+            &mut buf,
+            std::time::Duration::from_secs(0),
+        ) {
+            Ok(len) if len > 0 => {
+                let bytes = &buf[0..len];
+                if let Ok(msg) = postcard::from_bytes::<common::DeviceMessage>(bytes) {
+                    match msg {
+                        common::DeviceMessage::UpdateVolume(common::Channel::Main, vol) => {
+                            let vol = vol.clamp(0.0, 1.0);
+                            let volume: u32 = (vol * 100.5) as u32;
+                            if volume != last_main_volume {
+                                println!("New Main Volume: {}", volume);
+
+                                let pa_volume = pulse::volume::Volume(
+                                    (pulse::volume::Volume::NORMAL.0 as f32 * vol) as u32,
+                                );
+                                channel_volumes.set(channel_volumes.len(), pa_volume);
+
+                                introspector.set_sink_volume_by_index(1, &channel_volumes, None);
+
+                                last_main_volume = volume;
+                            }
+                        }
+                        m => println!("Ignored message: {:?}", m),
+                    }
+                } else {
+                    println!("Could not decode: {:?}", bytes);
+                }
+            }
+            Ok(_) => (),
+            Err(rusb::Error::Timeout) => (),
+            Err(e) => panic!("USB read error: {}", e),
         }
     }
 }
