@@ -59,39 +59,16 @@ fn main() -> anyhow::Result<()> {
         .take()
         .expect("callback done but no channel_volumes set");
 
-    let (mut stream, read_length) = pa.create_monitor_stream(Some(2), None)?;
+    let mut channel = pa.create_monitor_stream(Some(2), None)?;
 
     let mut last_main_volume = u32::MAX;
     loop {
         pa.iterate(true)?;
 
-        let length = read_length.get();
-        if length > 0 {
-            'peekloop: loop {
-                match stream
-                    .peek()
-                    .context("failed reading from monitoring stream")?
-                {
-                    pulse::stream::PeekResult::Empty => break 'peekloop,
-                    pulse::stream::PeekResult::Hole(_) => {
-                        stream.discard().context("failed dropping fragments")?
-                    }
-                    pulse::stream::PeekResult::Data(d) => {
-                        use std::convert::TryInto;
-                        let buf: [u8; 4] = d[(d.len() - std::mem::size_of::<f32>())..]
-                            .try_into()
-                            .expect("impossible");
-                        let v = f32::from_ne_bytes(buf);
-
-                        stream.discard().context("failed dropping fragments")?;
-
-                        pavu_mixer
-                            .send(common::HostMessage::UpdatePeak(common::Channel::Main, v))
-                            .context("failed updating main channel peak")?;
-                    }
-                }
-            }
-            read_length.set(0);
+        if let Some(peak) = channel.get_recent_peak()? {
+            pavu_mixer
+                .send(common::HostMessage::UpdatePeak(common::Channel::Main, peak))
+                .context("failed updating main channel peak")?;
         }
 
         // read main volume from usb

@@ -136,9 +136,24 @@ impl PulseInterface {
         &mut self,
         sink: Option<u32>,
         sink_input: Option<u32>,
-    ) -> anyhow::Result<(pulse::stream::Stream, Rc<cell::Cell<usize>>)> {
+    ) -> anyhow::Result<Channel> {
+        Channel::new(self, sink, sink_input)
+    }
+}
+
+pub struct Channel {
+    stream: pulse::stream::Stream,
+    read_length: Rc<cell::Cell<usize>>,
+}
+
+impl Channel {
+    pub fn new(
+        pa: &mut PulseInterface,
+        sink: Option<u32>,
+        sink_input: Option<u32>,
+    ) -> anyhow::Result<Self> {
         let mut stream =
-            pulse::stream::Stream::new(&mut self.context, "Peak Detect", &SAMPLE_SPEC, None)
+            pulse::stream::Stream::new(&mut pa.context, "Peak Detect", &SAMPLE_SPEC, None)
                 .context("failed creating monitoring stream")?;
 
         // will be written to by the callback
@@ -176,7 +191,7 @@ impl PulseInterface {
 
         // TODO: is it really necessary to block until the stream is ready?
         loop {
-            self.iterate(true)?;
+            pa.iterate(true)?;
             match stream.get_state() {
                 pulse::stream::State::Ready => break,
                 pulse::stream::State::Terminated | pulse::stream::State::Failed => {
@@ -186,6 +201,38 @@ impl PulseInterface {
             }
         }
 
-        Ok((stream, read_length))
+        Ok(Self {
+            stream,
+            read_length,
+        })
+    }
+
+    pub fn get_recent_peak(&mut self) -> anyhow::Result<Option<f32>> {
+        if self.read_length.get() <= 0 {
+            return Ok(None);
+        }
+
+        let mut recent_peak = None;
+        'peek_loop: loop {
+            match self
+                .stream
+                .peek()
+                .context("failed reading from monitoring stream")?
+            {
+                pulse::stream::PeekResult::Empty => break 'peek_loop,
+                pulse::stream::PeekResult::Hole(_) => {
+                    self.stream.discard().context("failed dropping fragments")?;
+                }
+                pulse::stream::PeekResult::Data(buf) => {
+                    use std::convert::TryInto;
+                    let buf: [u8; 4] = buf.try_into().context("got fragment of wrong length")?;
+                    recent_peak = Some(f32::from_ne_bytes(buf));
+                    self.stream.discard().context("failed dropping fragments")?;
+                }
+            }
+        }
+        self.read_length.set(0);
+
+        Ok(recent_peak)
     }
 }
