@@ -128,24 +128,52 @@ impl PulseInterface {
             }
         }
 
-        if let Some(sink_input_info) = sink_input_info.take() {
-            log::debug!(
-                "Found sink-input: \"{}\" from \"{}\"",
-                sink_input_info.name.as_deref().unwrap_or("<no name>"),
-                sink_input_info
-                    .application
-                    .as_deref()
-                    .unwrap_or("<unknown app>")
-            );
-            Ok(Some(Channel::new(
-                self,
-                Some(sink_input_info.sink),
-                Some(sink_input_info.index),
-            )?))
+        let sink_input_info = if let Some(s) = sink_input_info.take() {
+            s
         } else {
             log::debug!("No sink-input found.");
-            Ok(None)
+            return Ok(None);
+        };
+
+        log::debug!(
+            "Found sink-input: \"{}\" from \"{}\"",
+            sink_input_info.name.as_deref().unwrap_or("<no name>"),
+            sink_input_info
+                .application
+                .as_deref()
+                .unwrap_or("<unknown app>")
+        );
+
+        let sink_monitor_source = Rc::new(cell::RefCell::new(None));
+        let done = Rc::new(cell::Cell::new(Ok(false)));
+
+        self.introspector
+            .get_sink_info_by_index(sink_input_info.sink, {
+                let sink_monitor_source = sink_monitor_source.clone();
+                let done = done.clone();
+                move |result| match result {
+                    ListResult::Item(info) => {
+                        sink_monitor_source.replace(Some(info.monitor_source));
+                    }
+                    ListResult::Error => done.set(Err(())),
+                    ListResult::End => done.set(Ok(true)),
+                }
+            });
+
+        loop {
+            self.iterate(true)?;
+            match done.get() {
+                Ok(true) => break,
+                Ok(false) => (),
+                Err(_) => anyhow::bail!("failed querying sink monitor-source"),
+            }
         }
+
+        Ok(Some(Channel::new(
+            self,
+            Some(sink_monitor_source.take().expect("impossible")),
+            Some(sink_input_info.index),
+        )?))
     }
 
     pub fn attach_main_channel(&mut self) -> anyhow::Result<Channel> {
@@ -167,7 +195,7 @@ impl std::fmt::Debug for Channel {
 impl Channel {
     pub fn new(
         pa: &mut PulseInterface,
-        mut sink: Option<u32>,
+        sink_monitor: Option<u32>,
         sink_input: Option<u32>,
     ) -> anyhow::Result<Self> {
         let mut stream =
@@ -175,8 +203,6 @@ impl Channel {
                 .context("failed creating monitoring stream")?;
 
         if let Some(sink_input) = sink_input {
-            // TODO: This is a hack and needs to be done properly
-            sink = Some(2);
             stream.set_monitor_stream(sink_input)?;
         }
 
@@ -205,7 +231,11 @@ impl Channel {
         };
 
         stream
-            .connect_record(sink.map(|s| s.to_string()).as_deref(), Some(&attrs), flags)
+            .connect_record(
+                sink_monitor.map(|s| s.to_string()).as_deref(),
+                Some(&attrs),
+                flags,
+            )
             .context("failed connecting monitoring stream")?;
 
         // TODO: is it really necessary to block until the stream is ready?
