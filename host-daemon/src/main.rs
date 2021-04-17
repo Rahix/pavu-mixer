@@ -1,7 +1,62 @@
 use pulse::mainloop::standard as mainloop;
 use std::sync::atomic;
 
+use rusb::UsbContext;
+
 fn main() {
+    let mut found_device = None;
+    let mut found_iface = None;
+    let mut found_setting = None;
+    let mut found_read_endpoint = None;
+    let mut found_write_endpoint = None;
+    'loop_devices: for device in rusb::DeviceList::new().unwrap().iter() {
+        // find a device with the appropriate vendor class
+        if let Ok(config) = device.active_config_descriptor() {
+            for interface in config.interfaces() {
+                for desc in interface.descriptors() {
+                    match (
+                        desc.class_code(),
+                        desc.sub_class_code(),
+                        desc.protocol_code(),
+                    ) {
+                        (0xff, 0xc3, 0xc3) => {
+                            found_device = Some(device);
+                            found_iface = Some(interface.number());
+                            found_setting = Some(desc.setting_number());
+
+                            // get read and write endpoints
+                            for endpoint_desc in desc.endpoint_descriptors() {
+                                match endpoint_desc.direction() {
+                                    rusb::Direction::In => {
+                                        found_read_endpoint = Some(endpoint_desc.address())
+                                    }
+                                    rusb::Direction::Out => {
+                                        found_write_endpoint = Some(endpoint_desc.address())
+                                    }
+                                }
+                            }
+
+                            break 'loop_devices;
+                        }
+                        _ => (),
+                    }
+                }
+            }
+        }
+    }
+    let usb_device = dbg!(found_device.unwrap());
+    let usb_iface = found_iface.unwrap();
+    let usb_setting = found_setting.unwrap();
+    let usb_read_endpoint = found_read_endpoint.unwrap();
+    let usb_write_endpoint = found_write_endpoint.unwrap();
+    let mut usb_handle = usb_device.open().unwrap();
+
+    // configure endpoints
+    usb_handle.claim_interface(usb_iface).unwrap();
+    usb_handle
+        .set_alternate_setting(usb_iface, usb_setting)
+        .unwrap();
+
     let ss = pulse::sample::Spec {
         format: pulse::sample::Format::FLOAT32NE,
         channels: 1,
@@ -70,7 +125,7 @@ fn main() {
     });
 
     stream
-        .connect_record(Some("0"), Some(&stream_attrs), stream_flags)
+        .connect_record(Some("2"), Some(&stream_attrs), stream_flags)
         .unwrap();
 
     // Wait for stream
@@ -93,7 +148,7 @@ fn main() {
     }
 
     loop {
-        match mainloop.iterate(false) {
+        match mainloop.iterate(true) {
             mainloop::IterateResult::Quit(_) | mainloop::IterateResult::Err(_) => {
                 panic!("Mainloop iteration error");
             }
@@ -113,10 +168,15 @@ fn main() {
                     let v = f32::from_ne_bytes(buf);
                     stream.discard().unwrap();
 
-                    for _ in 0..((v * 100.5) as usize) {
-                        print!("#");
-                    }
-                    println!("");
+                    let msg = common::HostMessage::UpdateVolume(common::Channel::Main, v);
+                    let bytes = postcard::to_allocvec(&msg).unwrap();
+                    usb_handle
+                        .write_interrupt(
+                            usb_write_endpoint,
+                            &bytes,
+                            std::time::Duration::from_secs(100),
+                        )
+                        .unwrap();
                 }
             }
         }
