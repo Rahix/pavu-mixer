@@ -1,4 +1,7 @@
+#![no_std]
+
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone, Copy)]
+#[repr(u8)]
 pub enum Channel {
     Ch1,
     Ch2,
