@@ -19,14 +19,6 @@ pub struct PulseInterface {
     introspector: context::introspect::Introspector,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SinkInputInfo {
-    pub name: Option<String>,
-    pub application: Option<String>,
-    pub index: u32,
-    pub sink: u32,
-}
-
 impl PulseInterface {
     pub fn init() -> anyhow::Result<Self> {
         let mut proplist = pulse::proplist::Proplist::new().context("failed creating proplist")?;
@@ -84,7 +76,14 @@ impl PulseInterface {
     pub fn find_sink_input_by_props<'a>(
         &'a mut self,
         props: collections::BTreeMap<String, String>,
-    ) -> anyhow::Result<Option<SinkInputInfo>> {
+    ) -> anyhow::Result<Option<Channel>> {
+        pub struct SinkInputInfo {
+            pub name: Option<String>,
+            pub application: Option<String>,
+            pub index: u32,
+            pub sink: u32,
+        }
+
         let sink_input_info = Rc::new(cell::RefCell::new(None));
         let done = Rc::new(cell::Cell::new(Ok(false)));
 
@@ -129,15 +128,28 @@ impl PulseInterface {
             }
         }
 
-        Ok(sink_input_info.take())
+        if let Some(sink_input_info) = sink_input_info.take() {
+            log::debug!(
+                "Found sink-input: \"{}\" from \"{}\"",
+                sink_input_info.name.as_deref().unwrap_or("<no name>"),
+                sink_input_info
+                    .application
+                    .as_deref()
+                    .unwrap_or("<unknown app>")
+            );
+            Ok(Some(Channel::new(
+                self,
+                Some(sink_input_info.sink),
+                Some(sink_input_info.index),
+            )?))
+        } else {
+            log::debug!("No sink-input found.");
+            Ok(None)
+        }
     }
 
-    pub fn create_monitor_stream(
-        &mut self,
-        sink: Option<u32>,
-        sink_input: Option<u32>,
-    ) -> anyhow::Result<Channel> {
-        Channel::new(self, sink, sink_input)
+    pub fn attach_main_channel(&mut self) -> anyhow::Result<Channel> {
+        Channel::new(self, None, None)
     }
 }
 
@@ -146,15 +158,27 @@ pub struct Channel {
     read_length: Rc<cell::Cell<usize>>,
 }
 
+impl std::fmt::Debug for Channel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Channel {{ ... }}")
+    }
+}
+
 impl Channel {
     pub fn new(
         pa: &mut PulseInterface,
-        sink: Option<u32>,
+        mut sink: Option<u32>,
         sink_input: Option<u32>,
     ) -> anyhow::Result<Self> {
         let mut stream =
             pulse::stream::Stream::new(&mut pa.context, "Peak Detect", &SAMPLE_SPEC, None)
                 .context("failed creating monitoring stream")?;
+
+        if let Some(sink_input) = sink_input {
+            // TODO: This is a hack and needs to be done properly
+            sink = Some(2);
+            stream.set_monitor_stream(sink_input)?;
+        }
 
         // will be written to by the callback
         let read_length = Rc::new(cell::Cell::new(0));
@@ -167,8 +191,12 @@ impl Channel {
         });
 
         // TODO: do DONT_INHIBIT_AUTO_SUSPEND and DONT_MOVE properly
-        let flags = pulse::stream::FlagSet::PEAK_DETECT
-            | pulse::stream::FlagSet::ADJUST_LATENCY;
+        let mut flags =
+            pulse::stream::FlagSet::PEAK_DETECT | pulse::stream::FlagSet::ADJUST_LATENCY;
+
+        if sink_input.is_some() {
+            flags |= pulse::stream::FlagSet::DONT_MOVE;
+        }
 
         let attrs = pulse::def::BufferAttr {
             fragsize: std::mem::size_of::<f32>() as u32,
@@ -176,16 +204,8 @@ impl Channel {
             ..Default::default()
         };
 
-        if let Some(sink_input) = sink_input {
-            stream.set_monitor_stream(sink_input)?;
-        }
-
         stream
-            .connect_record(
-                sink.map(|s| format!("{}", s)).as_deref(),
-                Some(&attrs),
-                flags,
-            )
+            .connect_record(sink.map(|s| s.to_string()).as_deref(), Some(&attrs), flags)
             .context("failed connecting monitoring stream")?;
 
         // TODO: is it really necessary to block until the stream is ready?
@@ -193,9 +213,8 @@ impl Channel {
             pa.iterate(true)?;
             match stream.get_state() {
                 pulse::stream::State::Ready => break,
-                pulse::stream::State::Terminated | pulse::stream::State::Failed => {
-                    anyhow::bail!("terminated or failed stream")
-                }
+                pulse::stream::State::Terminated => anyhow::bail!("terminated stream"),
+                pulse::stream::State::Failed => anyhow::bail!("failed stream"),
                 _ => (),
             }
         }
