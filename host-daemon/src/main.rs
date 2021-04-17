@@ -1,16 +1,8 @@
 use anyhow::Context;
-use std::sync::atomic;
 
 mod config;
 mod connection;
 mod pa;
-
-/// Sample Spec for monitoring streams
-const SAMPLE_SPEC: pulse::sample::Spec = pulse::sample::Spec {
-    format: pulse::sample::Format::FLOAT32NE,
-    channels: 1,
-    rate: 25,
-};
 
 fn main() -> anyhow::Result<()> {
     env_logger::builder()
@@ -28,6 +20,11 @@ fn main() -> anyhow::Result<()> {
     let mut pavu_mixer = connection::PavuMixer::connect(&config.connection)?;
 
     let mut pa = pa::PulseInterface::init().context("failed pulseaudio init")?;
+
+    dbg!(pa.find_sink_input_by_props(config.channel_1.property_matches)?);
+    dbg!(pa.find_sink_input_by_props(config.channel_2.property_matches)?);
+    dbg!(pa.find_sink_input_by_props(config.channel_3.property_matches)?);
+    dbg!(pa.find_sink_input_by_props(config.channel_4.property_matches)?);
 
     let channel_volumes = std::rc::Rc::new(std::cell::RefCell::new(None));
     let mut introspector = pa.context.introspect();
@@ -62,55 +59,13 @@ fn main() -> anyhow::Result<()> {
         .take()
         .expect("callback done but no channel_volumes set");
 
-    let mut stream = pulse::stream::Stream::new(&mut pa.context, "Peak Detect", &SAMPLE_SPEC, None)
-        .context("failed creating monitoring stream")?;
-
-    // Select which sink-input to monitor
-    // stream.set_monitor_stream(0).unwrap();
-
-    // from pavucontrol:src/mainwindow.cc:666
-    let stream_flags = pulse::stream::FlagSet::DONT_MOVE
-        | pulse::stream::FlagSet::PEAK_DETECT
-        | pulse::stream::FlagSet::ADJUST_LATENCY;
-
-    let stream_attrs = pulse::def::BufferAttr {
-        fragsize: std::mem::size_of::<f32>() as u32,
-        maxlength: u32::MAX,
-        ..Default::default()
-    };
-
-    let read_length = std::sync::Arc::new(atomic::AtomicUsize::new(0));
-
-    stream.set_read_callback({
-        let read_length = read_length.clone();
-        Some(Box::new(move |length| {
-            read_length.store(length, atomic::Ordering::SeqCst);
-        }))
-    });
-
-    stream
-        .connect_record(Some("2"), Some(&stream_attrs), stream_flags)
-        .context("failed connecting monitoring stream")?;
-
-    // Wait for stream
-    'wait_for_stream: loop {
-        pa.iterate(true)?;
-        match stream.get_state() {
-            pulse::stream::State::Ready => {
-                break 'wait_for_stream;
-            }
-            pulse::stream::State::Terminated | pulse::stream::State::Failed => {
-                panic!("Broken stream");
-            }
-            _ => (),
-        }
-    }
+    let (mut stream, read_length) = pa.create_monitor_stream(Some(2), None)?;
 
     let mut last_main_volume = u32::MAX;
     loop {
         pa.iterate(true)?;
 
-        let length = read_length.load(atomic::Ordering::SeqCst);
+        let length = read_length.get();
         if length > 0 {
             'peekloop: loop {
                 match stream
@@ -136,7 +91,7 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
             }
-            read_length.store(0, atomic::Ordering::SeqCst);
+            read_length.set(0);
         }
 
         // read main volume from usb
