@@ -5,17 +5,18 @@ use std::sync::atomic;
 mod config;
 mod connection;
 
+/// Sample Spec for monitoring streams
+const SAMPLE_SPEC: pulse::sample::Spec = pulse::sample::Spec {
+    format: pulse::sample::Format::FLOAT32NE,
+    channels: 1,
+    rate: 25,
+};
+
 fn main() -> anyhow::Result<()> {
     env_logger::init();
 
     let config: config::Config = confy::load("pavu-mixer")?;
     let mut pavu_mixer = connection::PavuMixer::connect(&config.connection)?;
-
-    let ss = pulse::sample::Spec {
-        format: pulse::sample::Format::FLOAT32NE,
-        channels: 1,
-        rate: 25,
-    };
 
     let mut proplist = pulse::proplist::Proplist::new().context("failed creating proplist")?;
     proplist
@@ -92,7 +93,7 @@ fn main() -> anyhow::Result<()> {
         .take()
         .expect("callback done but no channel_volumes set");
 
-    let mut stream = pulse::stream::Stream::new(&mut context, "Peak Detect", &ss, None)
+    let mut stream = pulse::stream::Stream::new(&mut context, "Peak Detect", &SAMPLE_SPEC, None)
         .context("failed creating monitoring stream")?;
 
     // Select which sink-input to monitor
