@@ -6,6 +6,43 @@ use rtt_target::rprintln;
 
 use stm32f3xx_hal::{self as hal, pac, prelude::*};
 
+pub struct PavuMixerClass<'a, B: usb_device::bus::UsbBus> {
+    interface: usb_device::bus::InterfaceNumber,
+    read_ep: usb_device::endpoint::EndpointOut<'a, B>,
+    write_ep: usb_device::endpoint::EndpointIn<'a, B>,
+}
+
+impl<'a, B: usb_device::bus::UsbBus> PavuMixerClass<'a, B> {
+    pub fn new(alloc: &'a usb_device::bus::UsbBusAllocator<B>) -> Self {
+        Self {
+            interface: alloc.interface(),
+            read_ep: alloc.interrupt(64, 10),   // 10ms
+            write_ep: alloc.interrupt(64, 100), // 100ms
+        }
+    }
+
+    pub fn read<'b>(&mut self, buf: &'b mut [u8]) -> usb_device::Result<&'b mut [u8]> {
+        let bytes_read = self.read_ep.read(buf)?;
+        Ok(&mut buf[0..bytes_read])
+    }
+
+    pub fn write(&mut self, buf: &[u8]) -> usb_device::Result<usize> {
+        self.write_ep.write(buf)
+    }
+}
+
+impl<'a, B: usb_device::bus::UsbBus> usb_device::class::UsbClass<B> for PavuMixerClass<'a, B> {
+    fn get_configuration_descriptors(
+        &self,
+        writer: &mut usb_device::descriptor::DescriptorWriter,
+    ) -> usb_device::Result<()> {
+        writer.interface(self.interface, 0xff, 0xc3, 0xc3)?;
+        writer.endpoint(&self.read_ep)?;
+        writer.endpoint(&self.write_ep)?;
+        Ok(())
+    }
+}
+
 #[cortex_m_rt::entry]
 fn main() -> ! {
     rtt_target::rtt_init_print!();
@@ -23,9 +60,94 @@ fn main() -> ! {
         .pclk1(24u32.mhz())
         .freeze(&mut flash.acr);
 
-    rprintln!("Hello world!");
+    assert!(clocks.usbclk_valid());
+
+    let mut gpioa = dp.GPIOA.split(&mut rcc.ahb);
+
+    // F3 Discovery board has a pull-up resistor on the D+ line.
+    // Pull the D+ pin down to send a RESET condition to the USB bus.
+    // This forced reset is needed only for development, without it host
+    // will not reset your device when you upload new firmware.
+    let mut usb_dp = gpioa
+        .pa12
+        .into_push_pull_output(&mut gpioa.moder, &mut gpioa.otyper);
+    usb_dp.set_low().ok();
+    cortex_m::asm::delay(clocks.sysclk().0 / 100);
+
+    let usb = hal::usb::Peripheral {
+        usb: dp.USB,
+        pin_dm: gpioa.pa11.into_af14(&mut gpioa.moder, &mut gpioa.afrh),
+        pin_dp: usb_dp.into_af14(&mut gpioa.moder, &mut gpioa.afrh),
+    };
+    let usb_bus = hal::usb::UsbBus::new(usb);
+
+    let mut usb_class = PavuMixerClass::new(&usb_bus);
+
+    let mut usb_dev = usb_device::prelude::UsbDeviceBuilder::new(
+        &usb_bus,
+        usb_device::prelude::UsbVidPid(0x1209, 0x0001),
+    )
+    .manufacturer("Rahix")
+    .product("Pavu Mixer")
+    .serial_number("DEADBEEF")
+    .device_class(0x00)
+    .build();
+
+    rprintln!("USB device initialized.");
+
+    let mut gpiob = dp.GPIOB.split(&mut rcc.ahb);
+
+    let mut data = gpiob
+        .pb15
+        .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
+    let mut dclk = gpiob
+        .pb13
+        .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
+    let mut sclk = gpiob
+        .pb12
+        .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
+
+    rprintln!("GPIOs initialized.");
 
     loop {
+        if !usb_dev.poll(&mut [&mut usb_class]) {
+            continue;
+        }
+
+        let mut buf = [0x00; 64];
+        match usb_class.read(&mut buf) {
+            Ok(buf) if buf.len() > 0 => {
+                if let Ok(msg) = postcard::from_bytes::<common::HostMessage>(buf) {
+                    match msg {
+                        common::HostMessage::UpdateVolume(common::Channel::Main, v) => {
+                            let value = (v * 20.5) as u32;
+
+                            for i in 0..20 {
+                                if (19 - i) <= value {
+                                    data.set_low().unwrap();
+                                } else {
+                                    data.set_high().unwrap();
+                                }
+
+                                dclk.set_high().unwrap();
+                                dclk.set_low().unwrap();
+                            }
+
+                            sclk.set_high().unwrap();
+                            sclk.set_low().unwrap();
+                        }
+                        _ => (),
+                    }
+                } else {
+                    rprintln!("Failed decoding: {:?}", buf);
+                }
+            }
+            Err(usb_device::UsbError::WouldBlock) => (),
+            Err(e) => {
+                rprintln!("Error: {:?}", e);
+            }
+            _ => (),
+        }
     }
 }
 
