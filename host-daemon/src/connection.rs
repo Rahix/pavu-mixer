@@ -23,13 +23,33 @@ impl PavuMixer {
         let dev_info = DeviceInfo::search_device()?;
 
         if config.sudo_hack {
-            todo!("sudo hack")
+            let dev_path = std::path::PathBuf::from(format!(
+                "/dev/bus/usb/{:03}/{:03}",
+                dev_info.device.bus_number(),
+                dev_info.device.address()
+            ));
+            log::warn!("sudo hack! chmodding {:?} ...", dev_path);
+            let retcode = std::process::Command::new("sudo")
+                .arg("chmod")
+                .arg("a+rw")
+                .arg(&dev_path)
+                .status()?;
+            if !retcode.success() {
+                anyhow::bail!("sudo hack failed");
+            }
         }
 
-        let mut dev_handle = dev_info.device.open()?;
+        let mut dev_handle = dev_info
+            .device
+            .open()
+            .context("failed opening USB device")?;
 
-        dev_handle.claim_interface(dev_info.interface)?;
-        dev_handle.set_alternate_setting(dev_info.interface, dev_info.interface_setting)?;
+        dev_handle
+            .claim_interface(dev_info.interface)
+            .context("failed claiming USB interface")?;
+        dev_handle
+            .set_alternate_setting(dev_info.interface, dev_info.interface_setting)
+            .context("failed setting up USB interface")?;
 
         Ok(Self {
             dev_info,
@@ -42,13 +62,15 @@ impl PavuMixer {
 
         // for now we know that the ep can only take 64 bytes
         let mut buf = [0x00; 64];
-        let msg_bytes = postcard::to_slice(&msg, &mut buf)?;
+        let msg_bytes = postcard::to_slice(&msg, &mut buf).context("failed encoding message")?;
 
-        self.dev_handle.write_interrupt(
-            self.dev_info.ep.write_address,
-            &msg_bytes,
-            std::time::Duration::from_secs(5),
-        )?;
+        self.dev_handle
+            .write_interrupt(
+                self.dev_info.ep.write_address,
+                &msg_bytes,
+                std::time::Duration::from_secs(5),
+            )
+            .context("failed sending USB message")?;
 
         Ok(())
     }
@@ -62,12 +84,12 @@ impl PavuMixer {
         ) {
             Ok(len) => {
                 let msg_bytes = &buf[0..len];
-                let msg = postcard::from_bytes(msg_bytes)?;
+                let msg = postcard::from_bytes(msg_bytes).context("failed decoding message")?;
                 log::trace!("received: {:?}", msg);
                 Ok(Some(msg))
             }
             Err(rusb::Error::Timeout) => Ok(None),
-            Err(e) => Err(e.into()),
+            Err(e) => Err(e).context("failed receiving USB message"),
         }
     }
 }

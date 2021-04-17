@@ -4,9 +4,11 @@ use std::sync::atomic;
 mod config;
 mod connection;
 
-fn main() {
-    let config: config::Config = confy::load("pavu-mixer").unwrap();
-    let mut pavu_mixer = connection::PavuMixer::connect(&config.connection).unwrap();
+fn main() -> anyhow::Result<()> {
+    env_logger::init();
+
+    let config: config::Config = confy::load("pavu-mixer")?;
+    let mut pavu_mixer = connection::PavuMixer::connect(&config.connection)?;
 
     let ss = pulse::sample::Spec {
         format: pulse::sample::Format::FLOAT32NE,
