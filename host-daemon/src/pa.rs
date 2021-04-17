@@ -211,7 +211,7 @@ impl Channel {
             return Ok(None);
         }
 
-        let mut recent_peak = None;
+        let mut recent_peak: f32 = 0.0;
         'peek_loop: loop {
             match self
                 .stream
@@ -225,13 +225,13 @@ impl Channel {
                 pulse::stream::PeekResult::Data(buf) => {
                     use std::convert::TryInto;
                     let buf: [u8; 4] = buf.try_into().context("got fragment of wrong length")?;
-                    recent_peak = Some(f32::from_ne_bytes(buf));
+                    recent_peak = recent_peak.max(f32::from_ne_bytes(buf));
                     self.stream.discard().context("failed dropping fragments")?;
                 }
             }
         }
         self.read_length.set(0);
 
-        Ok(recent_peak)
+        Ok(Some(recent_peak))
     }
 }
