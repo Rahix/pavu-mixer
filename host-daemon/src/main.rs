@@ -191,28 +191,32 @@ fn main() {
 
         let length = read_length.load(atomic::Ordering::SeqCst);
         if length > 0 {
-            match stream.peek().unwrap() {
-                pulse::stream::PeekResult::Empty => continue,
-                pulse::stream::PeekResult::Hole(_) => stream.discard().unwrap(),
-                pulse::stream::PeekResult::Data(d) => {
-                    use std::convert::TryInto;
-                    let buf: [u8; 4] = d[(d.len() - std::mem::size_of::<f32>())..]
-                        .try_into()
-                        .unwrap();
-                    let v = f32::from_ne_bytes(buf);
-                    stream.discard().unwrap();
+            'peekloop: loop {
+                match stream.peek().unwrap() {
+                    pulse::stream::PeekResult::Empty => break 'peekloop,
+                    pulse::stream::PeekResult::Hole(_) => stream.discard().unwrap(),
+                    pulse::stream::PeekResult::Data(d) => {
+                        use std::convert::TryInto;
+                        let buf: [u8; 4] = d[(d.len() - std::mem::size_of::<f32>())..]
+                            .try_into()
+                            .unwrap();
+                        let v = f32::from_ne_bytes(buf);
 
-                    let msg = common::HostMessage::UpdatePeak(common::Channel::Main, v);
-                    let bytes = postcard::to_allocvec(&msg).unwrap();
-                    usb_handle
-                        .write_interrupt(
-                            usb_write_endpoint,
-                            &bytes,
-                            std::time::Duration::from_secs(100),
-                        )
-                        .unwrap();
+                        stream.discard().unwrap();
+
+                        let msg = common::HostMessage::UpdatePeak(common::Channel::Main, v);
+                        let bytes = postcard::to_allocvec(&msg).unwrap();
+                        usb_handle
+                            .write_interrupt(
+                                usb_write_endpoint,
+                                &bytes,
+                                std::time::Duration::from_secs(100),
+                            )
+                            .unwrap();
+                    }
                 }
             }
+            read_length.store(0, atomic::Ordering::SeqCst);
         }
 
         // read main volume from usb
