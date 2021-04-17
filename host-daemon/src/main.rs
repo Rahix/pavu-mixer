@@ -13,7 +13,9 @@ const SAMPLE_SPEC: pulse::sample::Spec = pulse::sample::Spec {
 };
 
 fn main() -> anyhow::Result<()> {
-    env_logger::init();
+    env_logger::builder()
+        .filter(Some("pavu_mixer_host"), log::LevelFilter::Info)
+        .init();
 
     let config: config::Config = confy::load("pavu-mixer")?;
     let mut pavu_mixer = connection::PavuMixer::connect(&config.connection)?;
