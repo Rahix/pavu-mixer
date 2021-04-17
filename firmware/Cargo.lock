@@ -248,6 +248,7 @@ version = "0.0.0"
 dependencies = [
  "cortex-m 0.7.2",
  "cortex-m-rt",
+ "embedded-hal",
  "micromath",
  "panic-rtt-target",
  "pavu-mixer-common",

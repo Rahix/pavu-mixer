@@ -4,6 +4,7 @@
 use panic_rtt_target as _;
 use rtt_target::rprintln;
 
+use micromath::F32Ext;
 use stm32f3xx_hal::{self as hal, pac, prelude::*};
 
 pub struct PavuMixerClass<'a, B: usb_device::bus::UsbBus> {
@@ -62,6 +63,13 @@ fn main() -> ! {
 
     assert!(clocks.usbclk_valid());
 
+    let mut gpioa = dp.GPIOA.split(&mut rcc.ahb);
+    let mut gpiob = dp.GPIOB.split(&mut rcc.ahb);
+    let mut gpioe = dp.GPIOE.split(&mut rcc.ahb);
+    let mut gpiof = dp.GPIOF.split(&mut rcc.ahb);
+
+    // -----------------------------------------------
+
     let mut adc1 = hal::adc::Adc::adc1(
         dp.ADC1, // The ADC we are going to control
         // The following is only needed to make sure the clock signal for the ADC is set up
@@ -74,9 +82,18 @@ fn main() -> ! {
 
     rprintln!("ADC initialized.");
 
-    let mut gpioa = dp.GPIOA.split(&mut rcc.ahb);
-    let mut gpiob = dp.GPIOB.split(&mut rcc.ahb);
-    let mut gpiof = dp.GPIOF.split(&mut rcc.ahb);
+    let tim1_channels = hal::pwm::tim1(dp.TIM1, 1280, 100.hz(), &clocks);
+
+    let pe9 = gpioe.pe9.into_af2(&mut gpioe.moder, &mut gpioe.afrh);
+    let pe11 = gpioe.pe11.into_af2(&mut gpioe.moder, &mut gpioe.afrh);
+    let pe13 = gpioe.pe13.into_af2(&mut gpioe.moder, &mut gpioe.afrh);
+    let pe14 = gpioe.pe14.into_af2(&mut gpioe.moder, &mut gpioe.afrh);
+    let mut ch1_pwm = tim1_channels.0.output_to_pe9(pe9);
+    let mut ch2_pwm = tim1_channels.1.output_to_pe11(pe11);
+    let mut ch3_pwm = tim1_channels.2.output_to_pe13(pe13);
+    let mut ch4_pwm = tim1_channels.3.output_to_pe14(pe14);
+
+    rprintln!("PWM initialized.");
 
     // F3 Discovery board has a pull-up resistor on the D+ line.
     // Pull the D+ pin down to send a RESET condition to the USB bus.
@@ -150,7 +167,24 @@ fn main() -> ! {
                             sclk.set_high().unwrap();
                             sclk.set_low().unwrap();
                         }
-                        _ => (),
+                        common::HostMessage::UpdatePeak(ch, v) => {
+                            let ch_pwm: &mut dyn embedded_hal::PwmPin<Duty = u16> = match ch {
+                                common::Channel::Ch1 => &mut ch1_pwm,
+                                common::Channel::Ch2 => &mut ch2_pwm,
+                                common::Channel::Ch3 => &mut ch3_pwm,
+                                common::Channel::Ch4 => &mut ch4_pwm,
+                                _ => unreachable!(),
+                            };
+
+                            if v > 0.01 {
+                                ch_pwm.enable();
+                                ch_pwm.set_duty(
+                                    (ch_pwm.get_max_duty() as f32 * (1.0 - v.powf(2.8))) as u16,
+                                );
+                            } else {
+                                ch_pwm.disable();
+                            }
+                        }
                     }
                 } else {
                     rprintln!("Failed decoding: {:?}", buf);
