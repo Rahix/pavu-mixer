@@ -85,7 +85,7 @@ fn inner(pa: &mut pa::PulseInterface) -> anyhow::Result<()> {
                 if let Some(peak) = channel.get_recent_peak()? {
                     let msg = common::HostMessage::UpdatePeak(*id, peak);
                     pavu_mixer
-                        .send(dbg!(msg))
+                        .send(msg)
                         .with_context(|| format!("failed updating channel peak for {:?}", id))?;
                 }
             }
