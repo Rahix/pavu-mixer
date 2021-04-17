@@ -1,0 +1,9 @@
+[package]
+name = "pavu-mixer-common"
+version = "0.0.0"
+authors = ["Rahix <rahix@rahix.de>"]
+edition = "2018"
+publish = false
+
+[dependencies]
+serde = "1.0.125"
