@@ -11,7 +11,7 @@ fn main() {
 
     match inner(&mut pa) {
         Ok(_) => eprintln!("Success!"),
-        Err(e) => eprintln!("{}", e),
+        Err(e) => eprintln!("{:?}", e),
     }
 }
 

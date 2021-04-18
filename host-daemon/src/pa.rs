@@ -2,7 +2,6 @@ use anyhow::Context;
 use pulse::callbacks::ListResult;
 use pulse::context;
 use pulse::mainloop::standard as mainloop;
-use std::borrow::Cow;
 use std::cell;
 use std::collections;
 use std::rc::Rc;
@@ -230,7 +229,7 @@ impl PulseInterface {
         Ok(default_sink.take())
     }
 
-    pub fn get_monitor_for_sink(&mut self, sink: &str) -> anyhow::Result<u32> {
+    pub fn get_monitor_for_sink(&mut self, sink: &str) -> anyhow::Result<(u32, u32)> {
         let sink_monitor = Rc::new(cell::RefCell::new(None));
         let done = Rc::new(cell::Cell::new(Ok(false)));
 
@@ -239,7 +238,7 @@ impl PulseInterface {
             let done = done.clone();
             move |result| match result {
                 ListResult::Item(info) => {
-                    sink_monitor.replace(Some(info.monitor_source));
+                    sink_monitor.replace(Some((info.monitor_source, info.index)));
                 }
                 ListResult::End => done.set(Ok(true)),
                 ListResult::Error => done.set(Err(())),
@@ -260,22 +259,29 @@ impl PulseInterface {
     }
 }
 
-struct SinkInputInfo {
-    name: Option<String>,
-    application: Option<String>,
-    index: u32,
-    sink: u32,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SinkInputInfo {
+    pub name: Option<String>,
+    pub application: Option<String>,
+    pub index: u32,
+    pub sink: u32,
 }
 
 pub struct Channel {
     stream: pulse::stream::Stream,
     ch: common::Channel,
     prop_matches: Option<Rc<collections::BTreeMap<String, String>>>,
+    sink: Option<u32>,
+    sink_input: Option<SinkInputInfo>,
 }
 
 impl std::fmt::Debug for Channel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Channel {{ {:?}, ... }}", self.ch)
+        f.debug_struct("Channel")
+            .field("ch", &self.ch)
+            .field("sink", &self.sink)
+            .field("sink_input", &self.sink_input)
+            .finish()
     }
 }
 
@@ -306,6 +312,8 @@ impl Channel {
             stream,
             ch,
             prop_matches: prop_matches.map(|p| Rc::new(p)),
+            sink: None,
+            sink_input: None,
         })
     }
 
@@ -333,14 +341,15 @@ impl Channel {
             old_stream.disconnect()?;
         }
 
-        let (monitor_source, sink_input): (u32, Option<u32>) = if self.is_for_sink() {
+        let (monitor_source, sink_input) = if self.is_for_sink() {
             let sink_name = if let Some(s) = pa.find_default_sink()? {
                 s
             } else {
                 // no default sink found, not connecting then...
                 return Ok(());
             };
-            let monitor_source = pa.get_monitor_for_sink(&sink_name)?;
+            let (monitor_source, sink_index) = pa.get_monitor_for_sink(&sink_name)?;
+            self.sink = Some(sink_index);
             (monitor_source, None)
         } else {
             let sink_input_info = match pa.find_sink_input_by_props(
@@ -352,8 +361,10 @@ impl Channel {
                 // no sink input found for this channel, not connecting then...
                 None => return Ok(()),
             };
-            let monitor_source = pa.get_monitor_for_sink(&sink_input_info.sink.to_string())?;
-            (monitor_source, Some(sink_input_info.index))
+            let (monitor_source, _) = pa.get_monitor_for_sink(&sink_input_info.sink.to_string())?;
+            let sink_input_index = sink_input_info.index;
+            self.sink_input = Some(sink_input_info);
+            (monitor_source, Some(sink_input_index))
         };
 
         if let Some(sink_input) = sink_input {
