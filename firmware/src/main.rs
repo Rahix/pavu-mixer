@@ -103,6 +103,73 @@ fn main() -> ! {
 
     rprintln!("PWM initialized.");
 
+    let mut data = gpiob
+        .pb15
+        .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
+    let mut dclk = gpiob
+        .pb13
+        .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
+    let mut sclk = gpiob
+        .pb12
+        .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
+
+    rprintln!("GPIOs initialized.");
+
+    let pins = (
+        gpiob.pb6.into_af4(&mut gpiob.moder, &mut gpiob.afrl), // SCL
+        gpiob.pb7.into_af4(&mut gpiob.moder, &mut gpiob.afrl), // SDA
+    );
+
+    let pca_int = gpioa
+        .pa10
+        .into_floating_input(&mut gpioa.moder, &mut gpioa.pupdr);
+
+    let mut i2c = hal::i2c::I2c::new(dp.I2C1, pins, 100.khz(), clocks, &mut rcc.apb1);
+
+    rprintln!("I2C bus initialized.");
+
+    i2c.write(0x41, &[0x03, 0x00]).unwrap();
+    i2c.write(0x41, &[0x01, 0x0F]).unwrap();
+
+    rprintln!("PCA9536 initialized.");
+
+    // Configure IO0
+    //  0: DESYNC_MAIN      = OUTPUT
+    //  1: MUTE_MAIN_BTN    = INPUT
+    //  2: MUTE_MAIN_LED1   = OUTPUT
+    //  3: MUTE_MAIN_LED2   = OUTPUT
+    //  4: MUTE1_BTN        = INPUT
+    //  5: MUTE1_LED1       = OUTPUT
+    //  6: MUTE1_LED2       = OUTPUT
+    //  7: MUTE2_BTN        = INPUT
+    i2c.write(0x20, &[0x06, 0b10010010]).unwrap();
+
+    // Configure IO1
+    //  0: MUTE2_LED1       = OUTPUT
+    //  1: MUTE2_LED2       = OUTPUT
+    //  2: MUTE3_BTN        = INPUT
+    //  3: MUTE3_LED1       = OUTPUT
+    //  4: MUTE3_LED2       = OUTPUT
+    //  5: MUTE4_BTN        = INPUT
+    //  6: MUTE4_LED1       = OUTPUT
+    //  7: MUTE4_LED2       = OUTPUT
+    i2c.write(0x20, &[0x07, 0b00100100]).unwrap();
+
+    // Read inputs once to clear interrupt
+    let mut buf = [0x00];
+    i2c.write_read(0x20, &[0x00], &mut buf).unwrap();
+    i2c.write_read(0x20, &[0x01], &mut buf).unwrap();
+
+    // Set all outputs appropriately
+    i2c.write(0x20, &[0x02, 0b00000001]).unwrap();
+    i2c.write(0x20, &[0x03, 0b00000000]).unwrap();
+
+    if pca_int.is_low().unwrap() {
+        rprintln!("PCA interrupt is asserted when it should not be!");
+    }
+
+    rprintln!("PCA9555 initialized.");
+
     // F3 Discovery board has a pull-up resistor on the D+ line.
     // Pull the D+ pin down to send a RESET condition to the USB bus.
     // This forced reset is needed only for development, without it host
@@ -133,18 +200,8 @@ fn main() -> ! {
     .build();
 
     rprintln!("USB device initialized.");
-
-    let mut data = gpiob
-        .pb15
-        .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
-    let mut dclk = gpiob
-        .pb13
-        .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
-    let mut sclk = gpiob
-        .pb12
-        .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
-
-    rprintln!("GPIOs initialized.");
+    rprintln!("Ready.");
+    rprintln!("");
 
     loop {
         if !usb_dev.poll(&mut [&mut usb_class]) {
@@ -190,6 +247,44 @@ fn main() -> ! {
                             } else {
                                 ch_pwm.disable();
                             }
+                        }
+                        common::HostMessage::ActivateChannel(ch, state) => {
+                            let mut io_state = [0x00, 0x00];
+                            i2c.write_read(0x20, &[0x02], &mut io_state[0..1]).unwrap();
+                            i2c.write_read(0x20, &[0x03], &mut io_state[1..2]).unwrap();
+
+                            rprintln!("Activating {:?}: {:?}", ch, state);
+
+                            match ch {
+                                common::Channel::Ch1 => {
+                                    io_state[0] &= 0b10011111;
+                                    if state {
+                                        io_state[0] |= 0b00100000;
+                                    }
+                                }
+                                common::Channel::Ch2 => {
+                                    io_state[1] &= 0b11111100;
+                                    if state {
+                                        io_state[1] |= 0b00000001;
+                                    }
+                                }
+                                common::Channel::Ch3 => {
+                                    io_state[1] &= 0b11100111;
+                                    if state {
+                                        io_state[1] |= 0b00001000;
+                                    }
+                                }
+                                common::Channel::Ch4 => {
+                                    io_state[1] &= 0b00111111;
+                                    if state {
+                                        io_state[1] |= 0b01000000;
+                                    }
+                                }
+                                _ => rprintln!("Why activate the main channel??"),
+                            }
+
+                            i2c.write(0x20, &[0x02, io_state[0]]).unwrap();
+                            i2c.write(0x20, &[0x03, io_state[1]]).unwrap();
                         }
                     }
                 } else {
