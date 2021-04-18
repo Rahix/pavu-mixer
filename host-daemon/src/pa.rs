@@ -17,10 +17,11 @@ const SAMPLE_SPEC: pulse::sample::Spec = pulse::sample::Spec {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Event {
-    /// Sinks were added or removed and we need to recheck the main channel.
-    NewSinks,
+    /// Sinks were added or removed (or default was changed) and we might need to reconnect the
+    /// main channel.
+    UpdateSinks,
     /// Sink inputs were added or removed and we need to recheck the 4 channels.
-    NewSinkInputs,
+    UpdateSinkInputs,
     /// New Peak data is available on one of the channels.
     NewPeaks(common::Channel),
 }
@@ -77,17 +78,20 @@ impl PulseInterface {
                 use pulse::context::subscribe::Facility;
                 use pulse::context::subscribe::Operation;
 
-                match op.expect("invalid callback params") {
-                    Operation::New => (),
-                    Operation::Removed => (),
-                    // ignore "changed" notifications
-                    Operation::Changed => return,
-                }
+                let op = op.expect("invalid callback params");
+                let facility = facility.expect("invalid callback params");
 
-                match facility.expect("invalid callback params") {
-                    Facility::Sink => event_tx.send(Event::NewSinks),
-                    Facility::SinkInput => event_tx.send(Event::NewSinkInputs),
-                    f => unreachable!("got wrong facility: {:?}", f),
+                match (facility, op) {
+                    (Facility::Sink, Operation::New) => event_tx.send(Event::UpdateSinks),
+                    (Facility::Sink, Operation::Removed) => event_tx.send(Event::UpdateSinks),
+                    (Facility::Sink, Operation::Changed) => Ok(()), // ignore
+                    (Facility::Server, _) => event_tx.send(Event::UpdateSinks),
+                    (Facility::SinkInput, Operation::New) => event_tx.send(Event::UpdateSinkInputs),
+                    (Facility::SinkInput, Operation::Removed) => {
+                        event_tx.send(Event::UpdateSinkInputs)
+                    }
+                    (Facility::SinkInput, Operation::Changed) => Ok(()), // ignore
+                    _ => unreachable!("unexpected facility: {:?}", facility),
                 }
                 .expect("channel failure");
             }))
@@ -95,13 +99,16 @@ impl PulseInterface {
 
         {
             use pulse::context::subscribe::InterestMaskSet;
-            context.subscribe(InterestMaskSet::SINK | InterestMaskSet::SINK_INPUT, |_| ());
+            context.subscribe(
+                InterestMaskSet::SINK | InterestMaskSet::SINK_INPUT | InterestMaskSet::SERVER,
+                |_| (),
+            );
         }
 
         // send events for initial discovery
-        event_tx.send(Event::NewSinks).expect("channel failure");
+        event_tx.send(Event::UpdateSinks).expect("channel failure");
         event_tx
-            .send(Event::NewSinkInputs)
+            .send(Event::UpdateSinkInputs)
             .expect("channel failure");
 
         Ok(PulseInterface {
@@ -319,9 +326,6 @@ impl Channel {
             pulse::stream::Stream::new(&mut pa.context, "Peak Detect", &SAMPLE_SPEC, None)
                 .context("failed creating monitoring stream")?;
 
-        // will be written to by the callback
-        let read_length = Rc::new(cell::Cell::new(0));
-
         stream.set_read_callback({
             let event_tx = pa.event_tx.clone();
             Some(Box::new(move |_length| {
@@ -340,17 +344,26 @@ impl Channel {
         self.prop_matches.is_none()
     }
 
-    pub fn is_connected(&self) -> bool {
-        use pulse::stream::State;
-
-        match self.stream.get_state() {
-            State::Ready => true,
-            _ => false,
-        }
-    }
-
     /// Attempt to connect to a sink monitor or sink input
     pub fn try_connect(&mut self, pa: &mut PulseInterface) -> anyhow::Result<()> {
+        if self.stream.get_state() != pulse::stream::State::Unconnected {
+            let mut new_stream =
+                pulse::stream::Stream::new(&mut pa.context, "Peak Detect", &SAMPLE_SPEC, None)
+                    .context("failed creating monitoring stream")?;
+
+            new_stream.set_read_callback({
+                let event_tx = pa.event_tx.clone();
+                let ch = self.ch;
+                Some(Box::new(move |_length| {
+                    event_tx.send(Event::NewPeaks(ch)).expect("channel failure");
+                }))
+            });
+
+            let mut old_stream = std::mem::replace(&mut self.stream, new_stream);
+
+            old_stream.disconnect()?;
+        }
+
         let (monitor_source, sink_input): (u32, Option<u32>) = if self.is_for_sink() {
             let sink_name = if let Some(s) = pa.find_default_sink()? {
                 s
@@ -398,70 +411,6 @@ impl Channel {
         }
 
         Ok(())
-    }
-
-    pub fn foo(
-        pa: &mut PulseInterface,
-        sink_monitor: Option<u32>,
-        sink_input: Option<u32>,
-    ) -> anyhow::Result<Self> {
-        let mut stream =
-            pulse::stream::Stream::new(&mut pa.context, "Peak Detect", &SAMPLE_SPEC, None)
-                .context("failed creating monitoring stream")?;
-
-        if let Some(sink_input) = sink_input {
-            stream.set_monitor_stream(sink_input)?;
-        }
-
-        // will be written to by the callback
-        let read_length = Rc::new(cell::Cell::new(0));
-
-        stream.set_read_callback({
-            let read_length = read_length.clone();
-            Some(Box::new(move |length| {
-                read_length.set(length);
-            }))
-        });
-
-        // TODO: do DONT_INHIBIT_AUTO_SUSPEND and DONT_MOVE properly
-        let mut flags =
-            pulse::stream::FlagSet::PEAK_DETECT | pulse::stream::FlagSet::ADJUST_LATENCY;
-
-        if sink_input.is_some() {
-            flags |= pulse::stream::FlagSet::DONT_MOVE;
-        }
-
-        let attrs = pulse::def::BufferAttr {
-            fragsize: std::mem::size_of::<f32>() as u32,
-            maxlength: u32::MAX,
-            ..Default::default()
-        };
-
-        stream
-            .connect_record(
-                sink_monitor.map(|s| s.to_string()).as_deref(),
-                Some(&attrs),
-                flags,
-            )
-            .context("failed connecting monitoring stream")?;
-
-        // TODO: is it really necessary to block until the stream is ready?
-        loop {
-            pa.iterate(true)?;
-            match stream.get_state() {
-                pulse::stream::State::Ready => break,
-                pulse::stream::State::Terminated => anyhow::bail!("terminated stream"),
-                pulse::stream::State::Failed => anyhow::bail!("failed stream"),
-                _ => (),
-            }
-        }
-
-        todo!();
-
-        // Ok(Self {
-        //     stream,
-        //     read_length,
-        // })
     }
 
     pub fn get_recent_peak(&mut self) -> anyhow::Result<Option<f32>> {
