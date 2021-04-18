@@ -113,6 +113,9 @@ fn inner(pa: &mut pa::PulseInterface) -> anyhow::Result<()> {
                     log::debug!("{:?} Volume: {:3.0}", ch_id, vol * 100.0);
                     ch.set_volume(pa, vol)?;
                 }
+                common::DeviceMessage::ToggleChannelMute(ch_id) => {
+                    log::info!("Muting/unmuting {:?}", ch_id);
+                }
             }
         }
     }

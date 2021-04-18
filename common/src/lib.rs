@@ -19,4 +19,5 @@ pub enum HostMessage {
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Clone, Copy)]
 pub enum DeviceMessage {
     UpdateVolume(Channel, f32),
+    ToggleChannelMute(Channel),
 }

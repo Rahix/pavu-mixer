@@ -251,42 +251,42 @@ fn main() -> ! {
                             }
                         }
                         common::HostMessage::ActivateChannel(ch, state) => {
-                            let mut io_state = [0x00, 0x00];
-                            i2c.write_read(0x20, &[0x02], &mut io_state[0..1]).unwrap();
-                            i2c.write_read(0x20, &[0x03], &mut io_state[1..2]).unwrap();
+                            let mut o_state = [0x00, 0x00];
+                            i2c.write_read(0x20, &[0x02], &mut o_state[0..1]).unwrap();
+                            i2c.write_read(0x20, &[0x03], &mut o_state[1..2]).unwrap();
 
                             rprintln!("Activating {:?}: {:?}", ch, state);
 
                             match ch {
                                 common::Channel::Ch1 => {
-                                    io_state[0] &= 0b10011111;
+                                    o_state[0] &= 0b10011111;
                                     if state {
-                                        io_state[0] |= 0b00100000;
+                                        o_state[0] |= 0b00100000;
                                     }
                                 }
                                 common::Channel::Ch2 => {
-                                    io_state[1] &= 0b11111100;
+                                    o_state[1] &= 0b11111100;
                                     if state {
-                                        io_state[1] |= 0b00000001;
+                                        o_state[1] |= 0b00000001;
                                     }
                                 }
                                 common::Channel::Ch3 => {
-                                    io_state[1] &= 0b11100111;
+                                    o_state[1] &= 0b11100111;
                                     if state {
-                                        io_state[1] |= 0b00001000;
+                                        o_state[1] |= 0b00001000;
                                     }
                                 }
                                 common::Channel::Ch4 => {
-                                    io_state[1] &= 0b00111111;
+                                    o_state[1] &= 0b00111111;
                                     if state {
-                                        io_state[1] |= 0b01000000;
+                                        o_state[1] |= 0b01000000;
                                     }
                                 }
                                 _ => rprintln!("Why activate the main channel??"),
                             }
 
-                            i2c.write(0x20, &[0x02, io_state[0]]).unwrap();
-                            i2c.write(0x20, &[0x03, io_state[1]]).unwrap();
+                            i2c.write(0x20, &[0x02, o_state[0]]).unwrap();
+                            i2c.write(0x20, &[0x03, o_state[1]]).unwrap();
                         }
                     }
                 } else {
@@ -302,6 +302,35 @@ fn main() -> ! {
                 Ok(_) => queued_message = None,
                 Err(usb_device::UsbError::WouldBlock) => continue,
                 Err(e) => rprintln!("USB write error: {:?}", e),
+            }
+        }
+
+        if pca_int.is_low().unwrap() {
+            let mut i_state = [0x00, 0x00];
+            i2c.write_read(0x20, &[0x00], &mut i_state[0..1]).unwrap();
+            i2c.write_read(0x20, &[0x01], &mut i_state[1..2]).unwrap();
+
+            if let Some(btn) = match (i_state[0] & 0b10010010, i_state[1] & 0b00100100) {
+                (0b00010010, 0b00100100) => Some(common::Channel::Ch2),
+                (0b10000010, 0b00100100) => Some(common::Channel::Ch1),
+                (0b10010000, 0b00100100) => Some(common::Channel::Main),
+                (0b10010010, 0b00000100) => Some(common::Channel::Ch4),
+                (0b10010010, 0b00100000) => Some(common::Channel::Ch3),
+                (0b10010010, 0b00100100) => None,
+                _ => {
+                rprintln!(
+                    "Got invalid button state: {:08b} {:08b}",
+                    i_state[0] & 0b10010010,
+                    i_state[1] & 0b00100100
+                );
+                None
+                },
+            } {
+                let msg = common::DeviceMessage::ToggleChannelMute(btn);
+                rprintln!("{:?}", msg);
+                let bytes = postcard::to_slice(&msg, &mut message_buf).unwrap();
+                queued_message = Some(bytes);
+                continue;
             }
         }
 
