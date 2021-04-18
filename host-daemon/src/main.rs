@@ -74,12 +74,40 @@ fn inner(pa: &mut pa::PulseInterface) -> anyhow::Result<()> {
                         })?;
                     }
                 }
-                pa::Event::UpdateSinks => ch_main.try_connect(pa)?,
+                pa::Event::UpdateSinks => {
+                    if !ch_main.try_connect(pa)? {
+                        log::warn!("no main channel!");
+                    }
+                }
                 pa::Event::UpdateSinkInputs => {
-                    ch1.try_connect(pa)?;
-                    ch2.try_connect(pa)?;
-                    ch3.try_connect(pa)?;
-                    ch4.try_connect(pa)?;
+                    let msg = common::HostMessage::ActivateChannel(
+                        common::Channel::Ch1,
+                        ch1.try_connect(pa)?,
+                    );
+                    pavu_mixer
+                        .send(msg)
+                        .context("failed de/activating channel 1")?;
+                    let msg = common::HostMessage::ActivateChannel(
+                        common::Channel::Ch2,
+                        ch2.try_connect(pa)?,
+                    );
+                    pavu_mixer
+                        .send(msg)
+                        .context("failed de/activating channel 2")?;
+                    let msg = common::HostMessage::ActivateChannel(
+                        common::Channel::Ch3,
+                        ch3.try_connect(pa)?,
+                    );
+                    pavu_mixer
+                        .send(msg)
+                        .context("failed de/activating channel 3")?;
+                    let msg = common::HostMessage::ActivateChannel(
+                        common::Channel::Ch4,
+                        ch4.try_connect(pa)?,
+                    );
+                    pavu_mixer
+                        .send(msg)
+                        .context("failed de/activating channel 4")?;
                 }
             }
         }

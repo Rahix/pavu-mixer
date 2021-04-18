@@ -314,7 +314,7 @@ impl Channel {
     }
 
     /// Attempt to connect to a sink monitor or sink input
-    pub fn try_connect(&mut self, pa: &mut PulseInterface) -> anyhow::Result<()> {
+    pub fn try_connect(&mut self, pa: &mut PulseInterface) -> anyhow::Result<bool> {
         if self.stream.get_state() != pulse::stream::State::Unconnected {
             let mut new_stream =
                 pulse::stream::Stream::new(&mut pa.context, "Peak Detect", &SAMPLE_SPEC, None)
@@ -339,7 +339,7 @@ impl Channel {
                 s
             } else {
                 // no default sink found, not connecting then...
-                return Ok(());
+                return Ok(false);
             };
             let (sink_index, monitor_source, volume) = pa.get_sink_data(&sink_name)?;
             self.sink = Some(sink_index);
@@ -363,7 +363,7 @@ impl Channel {
                 // no sink input found for this channel, not connecting then...
                 None => {
                     log::info!("{:?}: No sink-input found.", self.ch);
-                    return Ok(());
+                    return Ok(false);
                 }
             };
 
@@ -407,7 +407,7 @@ impl Channel {
             }
         }
 
-        Ok(())
+        Ok(true)
     }
 
     pub fn get_recent_peak(&mut self, pa: &mut PulseInterface) -> anyhow::Result<Option<f32>> {
