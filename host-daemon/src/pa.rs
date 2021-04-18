@@ -183,23 +183,7 @@ impl PulseInterface {
             }
         }
 
-        let sink_input_info = if let Some(s) = sink_input_info.take() {
-            s
-        } else {
-            log::debug!("No sink-input found.");
-            return Ok(None);
-        };
-
-        log::debug!(
-            "Found sink-input: \"{}\" from \"{}\"",
-            sink_input_info.name.as_deref().unwrap_or("<no name>"),
-            sink_input_info
-                .application
-                .as_deref()
-                .unwrap_or("<unknown app>")
-        );
-
-        Ok(Some(sink_input_info))
+        Ok(sink_input_info.take())
     }
 
     pub fn find_default_sink(&mut self) -> anyhow::Result<Option<String>> {
@@ -357,10 +341,22 @@ impl Channel {
                     .clone()
                     .expect("no prop matches for sink input"),
             )? {
-                Some(s) => s,
+                Some(s) => {
+                    log::info!(
+                        "{:?}: \"{}\" from \"{}\"",
+                        self.ch,
+                        s.name.as_deref().unwrap_or("<no name>"),
+                        s.application.as_deref().unwrap_or("<unknown app>")
+                    );
+                    s
+                }
                 // no sink input found for this channel, not connecting then...
-                None => return Ok(()),
+                None => {
+                    log::info!("{:?}: No sink-input found.", self.ch);
+                    return Ok(());
+                }
             };
+
             let (monitor_source, _) = pa.get_monitor_for_sink(&sink_input_info.sink.to_string())?;
             let sink_input_index = sink_input_info.index;
             self.sink_input = Some(sink_input_info);
