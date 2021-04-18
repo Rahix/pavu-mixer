@@ -138,7 +138,7 @@ impl PulseInterface {
     fn find_sink_input_by_props(
         &mut self,
         props: Rc<collections::BTreeMap<String, String>>,
-    ) -> anyhow::Result<Option<(SinkInputInfo, pulse::volume::ChannelVolumes)>> {
+    ) -> anyhow::Result<Option<(SinkInputInfo, pulse::volume::ChannelVolumes, bool)>> {
         let sink_input_info = Rc::new(cell::RefCell::new(None));
         let done = Rc::new(cell::Cell::new(Ok(false)));
 
@@ -165,6 +165,7 @@ impl PulseInterface {
                             sink: info.sink,
                         },
                         info.volume.clone(),
+                        info.mute,
                     )));
                 }
                 ListResult::Error => done.set(Err(())),
@@ -211,11 +212,11 @@ impl PulseInterface {
         Ok(default_sink.take())
     }
 
-    /// Returns (sink_index, monitor_source, channel_volumes)
+    /// Returns (sink_index, monitor_source, channel_volumes, muted)
     pub fn get_sink_data(
         &mut self,
         sink: &str,
-    ) -> anyhow::Result<(u32, u32, pulse::volume::ChannelVolumes)> {
+    ) -> anyhow::Result<(u32, u32, pulse::volume::ChannelVolumes, bool)> {
         let sink_monitor = Rc::new(cell::RefCell::new(None));
         let done = Rc::new(cell::Cell::new(Ok(false)));
 
@@ -228,6 +229,7 @@ impl PulseInterface {
                         info.index,
                         info.monitor_source,
                         info.volume.clone(),
+                        info.mute,
                     )));
                 }
                 ListResult::End => done.set(Ok(true)),
@@ -264,6 +266,7 @@ pub struct Channel {
     sink: Option<u32>,
     sink_input: Option<SinkInputInfo>,
     volume: Option<pulse::volume::ChannelVolumes>,
+    muted: bool,
 }
 
 impl std::fmt::Debug for Channel {
@@ -306,6 +309,7 @@ impl Channel {
             sink: None,
             sink_input: None,
             volume: None,
+            muted: true,
         })
     }
 
@@ -341,24 +345,25 @@ impl Channel {
                 // no default sink found, not connecting then...
                 return Ok(false);
             };
-            let (sink_index, monitor_source, volume) = pa.get_sink_data(&sink_name)?;
+            let (sink_index, monitor_source, volume, muted) = pa.get_sink_data(&sink_name)?;
             self.sink = Some(sink_index);
             self.volume = Some(volume);
+            self.muted = muted;
             (monitor_source, None)
         } else {
-            let (sink_input_info, volume) = match pa.find_sink_input_by_props(
+            let (sink_input_info, volume, muted) = match pa.find_sink_input_by_props(
                 self.prop_matches
                     .clone()
                     .expect("no prop matches for sink input"),
             )? {
-                Some((s, v)) => {
+                Some((s, v, m)) => {
                     log::info!(
                         "{:?}: \"{}\" from \"{}\"",
                         self.ch,
                         s.name.as_deref().unwrap_or("<no name>"),
                         s.application.as_deref().unwrap_or("<unknown app>")
                     );
-                    (s, v)
+                    (s, v, m)
                 }
                 // no sink input found for this channel, not connecting then...
                 None => {
@@ -367,10 +372,11 @@ impl Channel {
                 }
             };
 
-            let (_, monitor_source, _) = pa.get_sink_data(&sink_input_info.sink.to_string())?;
+            let (_, monitor_source, _, _) = pa.get_sink_data(&sink_input_info.sink.to_string())?;
             let sink_input_index = sink_input_info.index;
             self.sink_input = Some(sink_input_info);
             self.volume = Some(volume);
+            self.muted = muted;
             (monitor_source, Some(sink_input_index))
         };
 
@@ -462,5 +468,23 @@ impl Channel {
         }
 
         Ok(())
+    }
+
+    pub fn is_muted(&self) -> bool {
+        self.muted
+    }
+
+    pub fn mute(&mut self, pa: &mut PulseInterface, mute: bool) -> anyhow::Result<bool> {
+        if let Some(sink) = self.sink {
+            pa.introspector.set_sink_mute_by_index(sink, mute, None);
+            self.muted = mute;
+        } else if let Some(sink_input) = self.sink_input.as_ref() {
+            pa.introspector
+                .set_sink_input_mute(sink_input.index, mute, None);
+            self.muted = mute;
+        } else {
+            self.muted = true;
+        }
+        Ok(self.muted)
     }
 }

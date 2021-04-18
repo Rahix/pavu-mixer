@@ -88,8 +88,11 @@ fn inner(pa: &mut pa::PulseInterface) -> anyhow::Result<()> {
                     ]
                     .iter_mut()
                     {
-                        let state = ch.try_connect(pa)?;
-                        let msg = common::HostMessage::ActivateChannel(*id, state);
+                        let msg = if ch.try_connect(pa)? {
+                            common::HostMessage::UpdateChannelState(*id, Some(true))
+                        } else {
+                            common::HostMessage::UpdateChannelState(*id, None)
+                        };
                         pavu_mixer
                             .send(msg)
                             .with_context(|| format!("failed de/activating channel {:?}", id))?;
@@ -115,6 +118,24 @@ fn inner(pa: &mut pa::PulseInterface) -> anyhow::Result<()> {
                 }
                 common::DeviceMessage::ToggleChannelMute(ch_id) => {
                     log::info!("Muting/unmuting {:?}", ch_id);
+                    let ch = match ch_id {
+                        common::Channel::Main => &mut ch_main,
+                        common::Channel::Ch1 => &mut ch1,
+                        common::Channel::Ch2 => &mut ch2,
+                        common::Channel::Ch3 => &mut ch3,
+                        common::Channel::Ch4 => &mut ch4,
+                    };
+
+                    // TODO: Check current state
+                    let muted = !ch.is_muted();
+                    let new_state = ch.mute(pa, muted)?;
+
+                    pavu_mixer
+                        .send(common::HostMessage::UpdateChannelState(
+                            ch_id,
+                            Some(!new_state),
+                        ))
+                        .with_context(|| format!("failed de/activating channel {:?}", ch_id))?;
                 }
             }
         }
