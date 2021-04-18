@@ -147,11 +147,6 @@ impl PulseInterface {
             let done = done.clone();
             move |result| match result {
                 ListResult::Item(info) => {
-                    if sink_input_info.borrow().is_some() {
-                        // already got one, ignore
-                        return;
-                    }
-
                     for (name, value) in props.iter() {
                         if info.proplist.get_str(name).as_ref() != Some(value) {
                             // this is not the sink-input we're looking for
