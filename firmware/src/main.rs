@@ -80,6 +80,14 @@ fn main() -> ! {
         clocks,
     );
 
+    let mut fader_ch1_adc = gpioa.pa0.into_analog(&mut gpioa.moder, &mut gpioa.pupdr);
+    let mut fader_ch2_adc = gpioa.pa1.into_analog(&mut gpioa.moder, &mut gpioa.pupdr);
+    let mut fader_ch3_adc = gpioa.pa2.into_analog(&mut gpioa.moder, &mut gpioa.pupdr);
+    let mut fader_ch4_adc = gpioa.pa3.into_analog(&mut gpioa.moder, &mut gpioa.pupdr);
+    let mut fader_main_adc = gpiof.pf4.into_analog(&mut gpiof.moder, &mut gpiof.pupdr);
+
+    let mut previous_fader_values = [-1000.0f32; 5];
+
     rprintln!("ADC initialized.");
 
     let tim1_channels = hal::pwm::tim1(dp.TIM1, 1280, 100.hz(), &clocks);
@@ -138,8 +146,6 @@ fn main() -> ! {
 
     rprintln!("GPIOs initialized.");
 
-    let mut adc1_in5_pin = gpiof.pf4.into_analog(&mut gpiof.moder, &mut gpiof.pupdr);
-
     loop {
         if !usb_dev.poll(&mut [&mut usb_class]) {
             continue;
@@ -147,7 +153,7 @@ fn main() -> ! {
 
         let mut buf = [0x00; 64];
         match usb_class.read(&mut buf) {
-            Ok(buf) if buf.len() > 0 => {
+            Ok(buf) => {
                 if let Ok(msg) = postcard::from_bytes::<common::HostMessage>(buf) {
                     match msg {
                         common::HostMessage::UpdatePeak(common::Channel::Main, v) => {
@@ -191,32 +197,45 @@ fn main() -> ! {
                 }
             }
             Err(usb_device::UsbError::WouldBlock) => (),
-            Err(e) => {
-                rprintln!("Error: {:?}", e);
+            Err(e) => rprintln!("USB read error: {:?}", e),
+        }
+
+        let raw_values: [(common::Channel, u16); 5] = [
+            (
+                common::Channel::Ch1,
+                adc1.read(&mut fader_ch1_adc).expect("Error reading ADC."),
+            ),
+            (
+                common::Channel::Ch2,
+                adc1.read(&mut fader_ch2_adc).expect("Error reading ADC."),
+            ),
+            (
+                common::Channel::Ch3,
+                adc1.read(&mut fader_ch3_adc).expect("Error reading ADC."),
+            ),
+            (
+                common::Channel::Ch4,
+                adc1.read(&mut fader_ch4_adc).expect("Error reading ADC."),
+            ),
+            (
+                common::Channel::Main,
+                adc1.read(&mut fader_main_adc).expect("Error reading ADC."),
+            ),
+        ];
+
+        for ((ch, raw), previous) in raw_values.iter().zip(previous_fader_values.iter_mut()) {
+            let fader = ((*raw as f32).clamp(8.0, 3608.0) - 8.0) / 3600.0;
+            if (*previous - fader).abs() > 0.01 {
+                let msg = common::DeviceMessage::UpdateVolume(*ch, fader);
+                let mut buf = [0x00; 64];
+                let bytes = postcard::to_slice(&msg, &mut buf).unwrap();
+
+                match usb_class.write(bytes) {
+                    Ok(_) => *previous = fader,
+                    Err(usb_device::UsbError::WouldBlock) => (),
+                    Err(e) => rprintln!("USB write error: {:?}", e),
+                }
             }
-            _ => (),
-        }
-
-        // check main fader and send back value
-        let raw_value: u16 = adc1.read(&mut adc1_in5_pin).expect("Error reading adc1.");
-        let mut main = raw_value;
-        if main > 4080 {
-            main = 4080;
-        }
-        if main < 8 {
-            main = 8;
-        }
-        main -= 8;
-        let main = main as f32 / ((4080 - 8) as f32);
-
-        let msg = common::DeviceMessage::UpdateVolume(common::Channel::Main, main);
-        let mut buf = [0x00; 64];
-        let bytes = postcard::to_slice(&msg, &mut buf).unwrap();
-
-        match usb_class.write(bytes) {
-            Ok(_) => (),
-            Err(usb_device::UsbError::WouldBlock) => (),
-            Err(e) => panic!("write error: {:?}", e),
         }
     }
 }
