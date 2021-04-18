@@ -203,6 +203,8 @@ fn main() -> ! {
     rprintln!("Ready.");
     rprintln!("");
 
+    let mut message_buf = [0x00u8; 64];
+    let mut queued_message: Option<&[u8]> = None;
     loop {
         if !usb_dev.poll(&mut [&mut usb_class]) {
             continue;
@@ -295,6 +297,14 @@ fn main() -> ! {
             Err(e) => rprintln!("USB read error: {:?}", e),
         }
 
+        if let Some(msg) = queued_message {
+            match usb_class.write(msg) {
+                Ok(_) => queued_message = None,
+                Err(usb_device::UsbError::WouldBlock) => continue,
+                Err(e) => rprintln!("USB write error: {:?}", e),
+            }
+        }
+
         let raw_values: [(common::Channel, u16); 5] = [
             (
                 common::Channel::Ch1,
@@ -322,14 +332,10 @@ fn main() -> ! {
             let fader = ((*raw as f32).clamp(8.0, 3608.0) - 8.0) / 3600.0;
             if (*previous - fader).abs() > 0.01 {
                 let msg = common::DeviceMessage::UpdateVolume(*ch, fader);
-                let mut buf = [0x00; 64];
-                let bytes = postcard::to_slice(&msg, &mut buf).unwrap();
+                let bytes = postcard::to_slice(&msg, &mut message_buf).unwrap();
+                *previous = fader;
 
-                match usb_class.write(bytes) {
-                    Ok(_) => *previous = fader,
-                    Err(usb_device::UsbError::WouldBlock) => (),
-                    Err(e) => rprintln!("USB write error: {:?}", e),
-                }
+                queued_message = Some(bytes);
             }
         }
     }
