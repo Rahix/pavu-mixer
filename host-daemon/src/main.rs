@@ -100,13 +100,12 @@ fn inner(pa: &mut pa::PulseInterface) -> anyhow::Result<()> {
                         common::Channel::Ch3 => &mut ch3,
                         common::Channel::Ch4 => &mut ch4,
                     };
-                    let peak = ch
-                        .get_recent_peak()?
-                        .expect("no peak available after event");
-                    let msg = common::HostMessage::UpdatePeak(ch_id, peak);
-                    pavu_mixer
-                        .send(msg)
-                        .with_context(|| format!("failed updating channel peak for {:?}", ch_id))?;
+                    if let Some(peak) = ch.get_recent_peak()? {
+                        let msg = common::HostMessage::UpdatePeak(ch_id, peak);
+                        pavu_mixer.send(msg).with_context(|| {
+                            format!("failed updating channel peak for {:?}", ch_id)
+                        })?;
+                    }
                 }
                 pa::Event::UpdateSinks => ch_main.try_connect(pa)?,
                 pa::Event::UpdateSinkInputs => {
