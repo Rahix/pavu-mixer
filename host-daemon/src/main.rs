@@ -90,7 +90,7 @@ fn inner(pa: &mut pa::PulseInterface) -> anyhow::Result<()> {
                     .iter_mut()
                     {
                         let msg = if ch.try_connect(pa)? {
-                            common::HostMessage::UpdateChannelState(*id, Some(true))
+                            common::HostMessage::UpdateChannelState(*id, Some(!ch.is_muted()))
                         } else {
                             common::HostMessage::UpdateChannelState(*id, None)
                         };
