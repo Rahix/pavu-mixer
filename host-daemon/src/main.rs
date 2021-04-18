@@ -74,7 +74,7 @@ fn inner(pa: &mut pa::PulseInterface) -> anyhow::Result<()> {
                         })?;
                     }
                 }
-                e@pa::Event::UpdateSinks | e@pa::Event::UpdateSinkInputs => {
+                e @ pa::Event::UpdateSinks | e @ pa::Event::UpdateSinkInputs => {
                     if e == pa::Event::UpdateSinks {
                         if !ch_main.try_connect(pa)? {
                             log::warn!("no main channel!");
