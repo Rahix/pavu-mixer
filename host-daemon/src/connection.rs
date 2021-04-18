@@ -80,7 +80,7 @@ impl PavuMixer {
         match self.dev_handle.read_interrupt(
             self.dev_info.ep.read_address,
             &mut buf,
-            std::time::Duration::from_secs(0),
+            std::time::Duration::from_millis(50),
         ) {
             Ok(len) => {
                 let msg_bytes = &buf[0..len];
