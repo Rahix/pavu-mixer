@@ -317,6 +317,11 @@ impl Channel {
     /// Attempt to connect to a sink monitor or sink input
     pub fn try_connect(&mut self, pa: &mut PulseInterface) -> anyhow::Result<bool> {
         if self.stream.get_state() != pulse::stream::State::Unconnected {
+            self.stream.set_read_callback(None);
+
+            // ignore disconnection errors
+            let _ = self.stream.disconnect();
+
             let mut new_stream =
                 pulse::stream::Stream::new(&mut pa.context, "Peak Detect", &SAMPLE_SPEC, None)
                     .context("failed creating monitoring stream")?;
@@ -329,10 +334,7 @@ impl Channel {
                 }))
             });
 
-            let mut old_stream = std::mem::replace(&mut self.stream, new_stream);
-
-            // ignore disconnection errors
-            let _ = old_stream.disconnect();
+            self.stream = new_stream;
         }
 
         let (monitor_source, sink_input) = if self.is_for_sink() {
