@@ -410,7 +410,7 @@ impl Channel {
         Ok(())
     }
 
-    pub fn get_recent_peak(&mut self) -> anyhow::Result<Option<f32>> {
+    pub fn get_recent_peak(&mut self, pa: &mut PulseInterface) -> anyhow::Result<Option<f32>> {
         let mut recent_peak: Option<f32> = None;
         'peek_loop: loop {
             match self.stream.peek() {
@@ -425,8 +425,19 @@ impl Channel {
                     *rp = rp.max(f32::from_ne_bytes(buf));
                     self.stream.discard().context("failed dropping fragments")?;
                 }
-                // ignore read errors - the stream might be gone and will probably be replaced soon
-                Err(_) => return Ok(None),
+                Err(_) => {
+                    // on read error, issue a reconfiguration event
+                    if self.is_for_sink() {
+                        pa.event_tx
+                            .send(Event::UpdateSinks)
+                            .expect("channel failure");
+                    } else {
+                        pa.event_tx
+                            .send(Event::UpdateSinkInputs)
+                            .expect("channel failure");
+                    }
+                    return Ok(None);
+                }
             }
         }
         Ok(recent_peak)

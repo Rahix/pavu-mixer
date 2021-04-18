@@ -67,7 +67,7 @@ fn inner(pa: &mut pa::PulseInterface) -> anyhow::Result<()> {
                         common::Channel::Ch3 => &mut ch3,
                         common::Channel::Ch4 => &mut ch4,
                     };
-                    if let Some(peak) = ch.get_recent_peak()? {
+                    if let Some(peak) = ch.get_recent_peak(pa)? {
                         let msg = common::HostMessage::UpdatePeak(ch_id, peak);
                         pavu_mixer.send(msg).with_context(|| {
                             format!("failed updating channel peak for {:?}", ch_id)
