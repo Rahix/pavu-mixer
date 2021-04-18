@@ -136,17 +136,10 @@ impl PulseInterface {
         Self::iterate_mainloop(&mut self.mainloop, block)
     }
 
-    pub fn find_sink_input_by_props<'a>(
-        &'a mut self,
-        props: collections::BTreeMap<String, String>,
-    ) -> anyhow::Result<Option<Channel>> {
-        pub struct SinkInputInfo {
-            pub name: Option<String>,
-            pub application: Option<String>,
-            pub index: u32,
-            pub sink: u32,
-        }
-
+    fn find_sink_input_by_props(
+        &mut self,
+        props: Rc<collections::BTreeMap<String, String>>,
+    ) -> anyhow::Result<Option<SinkInputInfo>> {
         let sink_input_info = Rc::new(cell::RefCell::new(None));
         let done = Rc::new(cell::Cell::new(Ok(false)));
 
@@ -207,38 +200,7 @@ impl PulseInterface {
                 .unwrap_or("<unknown app>")
         );
 
-        let sink_monitor_source = Rc::new(cell::RefCell::new(None));
-        let done = Rc::new(cell::Cell::new(Ok(false)));
-
-        self.introspector
-            .get_sink_info_by_index(sink_input_info.sink, {
-                let sink_monitor_source = sink_monitor_source.clone();
-                let done = done.clone();
-                move |result| match result {
-                    ListResult::Item(info) => {
-                        sink_monitor_source.replace(Some(info.monitor_source));
-                    }
-                    ListResult::Error => done.set(Err(())),
-                    ListResult::End => done.set(Ok(true)),
-                }
-            });
-
-        loop {
-            let _ = self.iterate(true)?;
-            match done.get() {
-                Ok(true) => break,
-                Ok(false) => (),
-                Err(_) => anyhow::bail!("failed querying sink monitor-source"),
-            }
-        }
-
-        todo!()
-
-        // Ok(Some(Channel::new(
-        //     self,
-        //     Some(sink_monitor_source.take().expect("impossible")),
-        //     Some(sink_input_info.index),
-        // )?))
+        Ok(Some(sink_input_info))
     }
 
     pub fn find_default_sink(&mut self) -> anyhow::Result<Option<String>> {
@@ -298,10 +260,17 @@ impl PulseInterface {
     }
 }
 
+struct SinkInputInfo {
+    name: Option<String>,
+    application: Option<String>,
+    index: u32,
+    sink: u32,
+}
+
 pub struct Channel {
     stream: pulse::stream::Stream,
     ch: common::Channel,
-    prop_matches: Option<collections::BTreeMap<String, String>>,
+    prop_matches: Option<Rc<collections::BTreeMap<String, String>>>,
 }
 
 impl std::fmt::Debug for Channel {
@@ -336,7 +305,7 @@ impl Channel {
         Ok(Self {
             stream,
             ch,
-            prop_matches,
+            prop_matches: prop_matches.map(|p| Rc::new(p)),
         })
     }
 
@@ -374,7 +343,17 @@ impl Channel {
             let monitor_source = pa.get_monitor_for_sink(&sink_name)?;
             (monitor_source, None)
         } else {
-            todo!("sink input");
+            let sink_input_info = match pa.find_sink_input_by_props(
+                self.prop_matches
+                    .clone()
+                    .expect("no prop matches for sink input"),
+            )? {
+                Some(s) => s,
+                // no sink input found for this channel, not connecting then...
+                None => return Ok(()),
+            };
+            let monitor_source = pa.get_monitor_for_sink(&sink_input_info.sink.to_string())?;
+            (monitor_source, Some(sink_input_info.index))
         };
 
         if let Some(sink_input) = sink_input {

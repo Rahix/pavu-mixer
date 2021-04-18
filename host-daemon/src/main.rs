@@ -109,8 +109,11 @@ fn inner(pa: &mut pa::PulseInterface) -> anyhow::Result<()> {
                         .with_context(|| format!("failed updating channel peak for {:?}", ch_id))?;
                 }
                 pa::Event::UpdateSinks => ch_main.try_connect(pa)?,
-                _ => {
-                    dbg!(event);
+                pa::Event::UpdateSinkInputs => {
+                    ch1.try_connect(pa)?;
+                    ch2.try_connect(pa)?;
+                    ch3.try_connect(pa)?;
+                    ch4.try_connect(pa)?;
                 }
             }
         }
