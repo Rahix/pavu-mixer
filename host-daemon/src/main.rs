@@ -74,12 +74,13 @@ fn inner(pa: &mut pa::PulseInterface) -> anyhow::Result<()> {
                         })?;
                     }
                 }
-                pa::Event::UpdateSinks => {
-                    if !ch_main.try_connect(pa)? {
-                        log::warn!("no main channel!");
+                e@pa::Event::UpdateSinks | e@pa::Event::UpdateSinkInputs => {
+                    if e == pa::Event::UpdateSinks {
+                        if !ch_main.try_connect(pa)? {
+                            log::warn!("no main channel!");
+                        }
                     }
-                }
-                pa::Event::UpdateSinkInputs => {
+
                     for (id, ch) in [
                         (common::Channel::Ch1, &mut ch1),
                         (common::Channel::Ch2, &mut ch2),

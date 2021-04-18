@@ -106,9 +106,6 @@ impl PulseInterface {
 
         // send events for initial discovery
         event_tx.send(Event::UpdateSinks).expect("channel failure");
-        event_tx
-            .send(Event::UpdateSinkInputs)
-            .expect("channel failure");
 
         Ok(PulseInterface {
             mainloop,
