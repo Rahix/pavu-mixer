@@ -13,6 +13,7 @@ pub enum Channel {
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Clone, Copy)]
 pub enum HostMessage {
     UpdatePeak(Channel, f32),
+    ActivateChannel(Channel, bool),
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Clone, Copy)]
