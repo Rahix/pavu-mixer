@@ -5,6 +5,7 @@ use pulse::mainloop::standard as mainloop;
 use std::cell;
 use std::collections;
 use std::rc::Rc;
+use std::sync::mpsc;
 
 /// Sample Spec for monitoring streams
 const SAMPLE_SPEC: pulse::sample::Spec = pulse::sample::Spec {
@@ -13,10 +14,18 @@ const SAMPLE_SPEC: pulse::sample::Spec = pulse::sample::Spec {
     rate: 25,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Event {
+    NewSinks,
+    NewSinkInputs,
+}
+
 pub struct PulseInterface {
     mainloop: mainloop::Mainloop,
     pub context: context::Context,
     introspector: context::introspect::Introspector,
+    event_rx: mpsc::Receiver<Event>,
+    event_tx: mpsc::Sender<Event>,
 }
 
 impl PulseInterface {
@@ -54,10 +63,42 @@ impl PulseInterface {
 
         let introspector = context.introspect();
 
+        let (event_tx, event_rx) = mpsc::channel();
+
+        // register subscription stuff
+        context.set_subscribe_callback({
+            let event_tx = event_tx.clone();
+            Some(Box::new(move |facility, op, _idx| {
+                use pulse::context::subscribe::Facility;
+                use pulse::context::subscribe::Operation;
+
+                match op.expect("invalid callback params") {
+                    Operation::New => (),
+                    Operation::Removed => (),
+                    // ignore "changed" notifications
+                    Operation::Changed => return,
+                }
+
+                match facility.expect("invalid callback params") {
+                    Facility::Sink => event_tx.send(Event::NewSinks),
+                    Facility::SinkInput => event_tx.send(Event::NewSinkInputs),
+                    f => unreachable!("got wrong facility: {:?}", f),
+                }
+                .expect("channel failure");
+            }))
+        });
+
+        {
+            use pulse::context::subscribe::InterestMaskSet;
+            context.subscribe(InterestMaskSet::SINK | InterestMaskSet::SINK_INPUT, |_| ());
+        }
+
         Ok(PulseInterface {
             mainloop,
             context,
             introspector,
+            event_rx,
+            event_tx,
         })
     }
 
@@ -69,8 +110,9 @@ impl PulseInterface {
         }
     }
 
-    pub fn iterate(&mut self, block: bool) -> anyhow::Result<()> {
-        Self::iterate_mainloop(&mut self.mainloop, block)
+    pub fn iterate<'a>(&'a mut self, block: bool) -> anyhow::Result<impl Iterator<Item = Event> + 'a> {
+        Self::iterate_mainloop(&mut self.mainloop, block)?;
+        Ok(self.event_rx.try_iter())
     }
 
     pub fn find_sink_input_by_props<'a>(

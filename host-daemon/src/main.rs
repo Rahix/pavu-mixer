@@ -78,7 +78,9 @@ fn inner(pa: &mut pa::PulseInterface) -> anyhow::Result<()> {
 
     let mut last_main_volume = u32::MAX;
     loop {
-        pa.iterate(true)?;
+        for event in pa.iterate(true)? {
+            dbg!(event);
+        }
 
         for (id, channel) in channels.iter_mut() {
             if let Some(channel) = channel {
