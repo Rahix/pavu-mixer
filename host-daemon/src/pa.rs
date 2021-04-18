@@ -138,7 +138,7 @@ impl PulseInterface {
     fn find_sink_input_by_props(
         &mut self,
         props: Rc<collections::BTreeMap<String, String>>,
-    ) -> anyhow::Result<Option<SinkInputInfo>> {
+    ) -> anyhow::Result<Option<(SinkInputInfo, pulse::volume::ChannelVolumes)>> {
         let sink_input_info = Rc::new(cell::RefCell::new(None));
         let done = Rc::new(cell::Cell::new(Ok(false)));
 
@@ -155,14 +155,17 @@ impl PulseInterface {
                     }
 
                     // all props matched if we're here!
-                    sink_input_info.replace(Some(SinkInputInfo {
-                        name: info.name.as_ref().map(|c| c.to_owned().into_owned()),
-                        application: info
-                            .proplist
-                            .get_str(pulse::proplist::properties::APPLICATION_NAME),
-                        index: info.index,
-                        sink: info.sink,
-                    }));
+                    sink_input_info.replace(Some((
+                        SinkInputInfo {
+                            name: info.name.as_ref().map(|c| c.to_owned().into_owned()),
+                            application: info
+                                .proplist
+                                .get_str(pulse::proplist::properties::APPLICATION_NAME),
+                            index: info.index,
+                            sink: info.sink,
+                        },
+                        info.volume.clone(),
+                    )));
                 }
                 ListResult::Error => done.set(Err(())),
                 ListResult::End => done.set(Ok(true)),
@@ -208,7 +211,11 @@ impl PulseInterface {
         Ok(default_sink.take())
     }
 
-    pub fn get_monitor_for_sink(&mut self, sink: &str) -> anyhow::Result<(u32, u32)> {
+    /// Returns (sink_index, monitor_source, channel_volumes)
+    pub fn get_sink_data(
+        &mut self,
+        sink: &str,
+    ) -> anyhow::Result<(u32, u32, pulse::volume::ChannelVolumes)> {
         let sink_monitor = Rc::new(cell::RefCell::new(None));
         let done = Rc::new(cell::Cell::new(Ok(false)));
 
@@ -217,7 +224,11 @@ impl PulseInterface {
             let done = done.clone();
             move |result| match result {
                 ListResult::Item(info) => {
-                    sink_monitor.replace(Some((info.monitor_source, info.index)));
+                    sink_monitor.replace(Some((
+                        info.index,
+                        info.monitor_source,
+                        info.volume.clone(),
+                    )));
                 }
                 ListResult::End => done.set(Ok(true)),
                 ListResult::Error => done.set(Err(())),
@@ -252,6 +263,7 @@ pub struct Channel {
     prop_matches: Option<Rc<collections::BTreeMap<String, String>>>,
     sink: Option<u32>,
     sink_input: Option<SinkInputInfo>,
+    volume: Option<pulse::volume::ChannelVolumes>,
 }
 
 impl std::fmt::Debug for Channel {
@@ -293,6 +305,7 @@ impl Channel {
             prop_matches: prop_matches.map(|p| Rc::new(p)),
             sink: None,
             sink_input: None,
+            volume: None,
         })
     }
 
@@ -328,23 +341,24 @@ impl Channel {
                 // no default sink found, not connecting then...
                 return Ok(());
             };
-            let (monitor_source, sink_index) = pa.get_monitor_for_sink(&sink_name)?;
+            let (sink_index, monitor_source, volume) = pa.get_sink_data(&sink_name)?;
             self.sink = Some(sink_index);
+            self.volume = Some(volume);
             (monitor_source, None)
         } else {
-            let sink_input_info = match pa.find_sink_input_by_props(
+            let (sink_input_info, volume) = match pa.find_sink_input_by_props(
                 self.prop_matches
                     .clone()
                     .expect("no prop matches for sink input"),
             )? {
-                Some(s) => {
+                Some((s, v)) => {
                     log::info!(
                         "{:?}: \"{}\" from \"{}\"",
                         self.ch,
                         s.name.as_deref().unwrap_or("<no name>"),
                         s.application.as_deref().unwrap_or("<unknown app>")
                     );
-                    s
+                    (s, v)
                 }
                 // no sink input found for this channel, not connecting then...
                 None => {
@@ -353,9 +367,10 @@ impl Channel {
                 }
             };
 
-            let (monitor_source, _) = pa.get_monitor_for_sink(&sink_input_info.sink.to_string())?;
+            let (_, monitor_source, _) = pa.get_sink_data(&sink_input_info.sink.to_string())?;
             let sink_input_index = sink_input_info.index;
             self.sink_input = Some(sink_input_info);
+            self.volume = Some(volume);
             (monitor_source, Some(sink_input_index))
         };
 
@@ -417,5 +432,26 @@ impl Channel {
             }
         }
         Ok(recent_peak)
+    }
+
+    pub fn set_volume(&mut self, pa: &mut PulseInterface, v: f32) -> anyhow::Result<()> {
+        let volume = match self.volume.as_mut() {
+            Some(v) => v,
+            None => return Ok(()),
+        };
+
+        let pa_volume = pulse::volume::Volume((pulse::volume::Volume::NORMAL.0 as f32 * v) as u32);
+        volume.set(volume.len(), pa_volume);
+
+        if let Some(sink) = self.sink {
+            pa.introspector
+                .set_sink_volume_by_index(sink, &volume, None);
+        }
+        if let Some(sink_input) = self.sink_input.as_ref() {
+            pa.introspector
+                .set_sink_input_volume(sink_input.index, &volume, None);
+        }
+
+        Ok(())
     }
 }
