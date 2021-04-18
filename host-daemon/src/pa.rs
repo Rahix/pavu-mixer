@@ -322,7 +322,8 @@ impl Channel {
 
             let mut old_stream = std::mem::replace(&mut self.stream, new_stream);
 
-            old_stream.disconnect()?;
+            // ignore disconnection errors
+            let _ = old_stream.disconnect();
         }
 
         let (monitor_source, sink_input) = if self.is_for_sink() {
