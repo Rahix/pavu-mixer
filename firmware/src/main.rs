@@ -250,39 +250,54 @@ fn main() -> ! {
                                 ch_pwm.disable();
                             }
                         }
-                        common::HostMessage::ActivateChannel(ch, state) => {
+                        common::HostMessage::UpdateChannelState(ch, state) => {
                             let mut o_state = [0x00, 0x00];
                             i2c.write_read(0x20, &[0x02], &mut o_state[0..1]).unwrap();
                             i2c.write_read(0x20, &[0x03], &mut o_state[1..2]).unwrap();
 
-                            rprintln!("Activating {:?}: {:?}", ch, state);
-
                             match ch {
                                 common::Channel::Ch1 => {
                                     o_state[0] &= 0b10011111;
-                                    if state {
+                                    if state == Some(true) {
                                         o_state[0] |= 0b00100000;
+                                    } else if state == Some(false) {
+                                        o_state[0] |= 0b01000000;
                                     }
                                 }
                                 common::Channel::Ch2 => {
                                     o_state[1] &= 0b11111100;
-                                    if state {
+                                    if state == Some(true) {
                                         o_state[1] |= 0b00000001;
+                                    } else if state == Some(false) {
+                                        o_state[1] |= 0b00000010;
                                     }
                                 }
                                 common::Channel::Ch3 => {
                                     o_state[1] &= 0b11100111;
-                                    if state {
+                                    if state == Some(true) {
                                         o_state[1] |= 0b00001000;
+                                    } else if state == Some(false) {
+                                        o_state[1] |= 0b00010000;
                                     }
                                 }
                                 common::Channel::Ch4 => {
                                     o_state[1] &= 0b00111111;
-                                    if state {
+                                    if state == Some(true) {
                                         o_state[1] |= 0b01000000;
+                                    } else if state == Some(false) {
+                                        o_state[1] |= 0b10000000;
                                     }
                                 }
-                                _ => rprintln!("Why activate the main channel??"),
+                                common::Channel::Main => {
+                                    o_state[0] &= 0b11110011;
+                                    if state == Some(true) {
+                                        o_state[0] |= 0b00000100;
+                                    } else if state == Some(false) {
+                                        o_state[0] |= 0b00001000;
+                                    } else {
+                                        rprintln!("Main channel disabled?");
+                                    }
+                                }
                             }
 
                             i2c.write(0x20, &[0x02, o_state[0]]).unwrap();
