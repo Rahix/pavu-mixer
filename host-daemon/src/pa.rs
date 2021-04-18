@@ -413,22 +413,20 @@ impl Channel {
     pub fn get_recent_peak(&mut self) -> anyhow::Result<Option<f32>> {
         let mut recent_peak: Option<f32> = None;
         'peek_loop: loop {
-            match self
-                .stream
-                .peek()
-                .context("failed reading from monitoring stream")?
-            {
-                pulse::stream::PeekResult::Empty => break 'peek_loop,
-                pulse::stream::PeekResult::Hole(_) => {
+            match self.stream.peek() {
+                Ok(pulse::stream::PeekResult::Empty) => break 'peek_loop,
+                Ok(pulse::stream::PeekResult::Hole(_)) => {
                     self.stream.discard().context("failed dropping fragments")?;
                 }
-                pulse::stream::PeekResult::Data(buf) => {
+                Ok(pulse::stream::PeekResult::Data(buf)) => {
                     use std::convert::TryInto;
                     let buf: [u8; 4] = buf.try_into().context("got fragment of wrong length")?;
                     let rp = recent_peak.get_or_insert(0.0);
                     *rp = rp.max(f32::from_ne_bytes(buf));
                     self.stream.discard().context("failed dropping fragments")?;
                 }
+                // ignore read errors - the stream might be gone and will probably be replaced soon
+                Err(_) => return Ok(None),
             }
         }
         Ok(recent_peak)
