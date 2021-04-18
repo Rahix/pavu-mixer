@@ -80,34 +80,20 @@ fn inner(pa: &mut pa::PulseInterface) -> anyhow::Result<()> {
                     }
                 }
                 pa::Event::UpdateSinkInputs => {
-                    let msg = common::HostMessage::ActivateChannel(
-                        common::Channel::Ch1,
-                        ch1.try_connect(pa)?,
-                    );
-                    pavu_mixer
-                        .send(msg)
-                        .context("failed de/activating channel 1")?;
-                    let msg = common::HostMessage::ActivateChannel(
-                        common::Channel::Ch2,
-                        ch2.try_connect(pa)?,
-                    );
-                    pavu_mixer
-                        .send(msg)
-                        .context("failed de/activating channel 2")?;
-                    let msg = common::HostMessage::ActivateChannel(
-                        common::Channel::Ch3,
-                        ch3.try_connect(pa)?,
-                    );
-                    pavu_mixer
-                        .send(msg)
-                        .context("failed de/activating channel 3")?;
-                    let msg = common::HostMessage::ActivateChannel(
-                        common::Channel::Ch4,
-                        ch4.try_connect(pa)?,
-                    );
-                    pavu_mixer
-                        .send(msg)
-                        .context("failed de/activating channel 4")?;
+                    for (id, ch) in [
+                        (common::Channel::Ch1, &mut ch1),
+                        (common::Channel::Ch2, &mut ch2),
+                        (common::Channel::Ch3, &mut ch3),
+                        (common::Channel::Ch4, &mut ch4),
+                    ]
+                    .iter_mut()
+                    {
+                        let state = ch.try_connect(pa)?;
+                        let msg = common::HostMessage::ActivateChannel(*id, state);
+                        pavu_mixer
+                            .send(msg)
+                            .with_context(|| format!("failed de/activating channel {:?}", id))?;
+                    }
                 }
             }
         }
