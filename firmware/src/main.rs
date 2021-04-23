@@ -7,42 +7,7 @@ use rtt_target::rprintln;
 use micromath::F32Ext;
 use stm32f3xx_hal::{self as hal, pac, prelude::*};
 
-pub struct PavuMixerClass<'a, B: usb_device::bus::UsbBus> {
-    interface: usb_device::bus::InterfaceNumber,
-    read_ep: usb_device::endpoint::EndpointOut<'a, B>,
-    write_ep: usb_device::endpoint::EndpointIn<'a, B>,
-}
-
-impl<'a, B: usb_device::bus::UsbBus> PavuMixerClass<'a, B> {
-    pub fn new(alloc: &'a usb_device::bus::UsbBusAllocator<B>) -> Self {
-        Self {
-            interface: alloc.interface(),
-            read_ep: alloc.interrupt(64, 10),   // 10ms
-            write_ep: alloc.interrupt(64, 100), // 100ms
-        }
-    }
-
-    pub fn read<'b>(&mut self, buf: &'b mut [u8]) -> usb_device::Result<&'b mut [u8]> {
-        let bytes_read = self.read_ep.read(buf)?;
-        Ok(&mut buf[0..bytes_read])
-    }
-
-    pub fn write(&mut self, buf: &[u8]) -> usb_device::Result<usize> {
-        self.write_ep.write(buf)
-    }
-}
-
-impl<'a, B: usb_device::bus::UsbBus> usb_device::class::UsbClass<B> for PavuMixerClass<'a, B> {
-    fn get_configuration_descriptors(
-        &self,
-        writer: &mut usb_device::descriptor::DescriptorWriter,
-    ) -> usb_device::Result<()> {
-        writer.interface(self.interface, 0xff, 0xc3, 0xc3)?;
-        writer.endpoint(&self.read_ep)?;
-        writer.endpoint(&self.write_ep)?;
-        Ok(())
-    }
-}
+mod usb;
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
@@ -187,7 +152,7 @@ fn main() -> ! {
     };
     let usb_bus = hal::usb::UsbBus::new(usb);
 
-    let mut usb_class = PavuMixerClass::new(&usb_bus);
+    let mut usb_class = usb::PavuMixerClass::new(&usb_bus);
 
     let mut usb_dev = usb_device::prelude::UsbDeviceBuilder::new(
         &usb_bus,
@@ -203,119 +168,110 @@ fn main() -> ! {
     rprintln!("Ready.");
     rprintln!("");
 
-    let mut message_buf = [0x00u8; 64];
-    let mut queued_message: Option<&[u8]> = None;
+    let mut queued_message: Option<common::DeviceMessage> = None;
     loop {
         if !usb_dev.poll(&mut [&mut usb_class]) {
             continue;
         }
 
-        let mut buf = [0x00; 64];
-        match usb_class.read(&mut buf) {
-            Ok(buf) => {
-                if let Ok(msg) = postcard::from_bytes::<common::HostMessage>(buf) {
-                    match msg {
-                        common::HostMessage::UpdatePeak(common::Channel::Main, v) => {
-                            let value = (v * 20.5) as u32;
+        match usb_class.recv_host_message() {
+            Ok(msg) => match msg {
+                common::HostMessage::UpdatePeak(common::Channel::Main, v) => {
+                    let value = (v * 20.5) as u32;
 
-                            for i in 0..20 {
-                                if (19 - i) <= value {
-                                    data.set_low().unwrap();
-                                } else {
-                                    data.set_high().unwrap();
-                                }
-
-                                dclk.set_high().unwrap();
-                                dclk.set_low().unwrap();
-                            }
-
-                            sclk.set_high().unwrap();
-                            sclk.set_low().unwrap();
+                    for i in 0..20 {
+                        if (19 - i) <= value {
+                            data.set_low().unwrap();
+                        } else {
+                            data.set_high().unwrap();
                         }
-                        common::HostMessage::UpdatePeak(ch, v) => {
-                            let ch_pwm: &mut dyn embedded_hal::PwmPin<Duty = u16> = match ch {
-                                common::Channel::Ch1 => &mut ch1_pwm,
-                                common::Channel::Ch2 => &mut ch2_pwm,
-                                common::Channel::Ch3 => &mut ch3_pwm,
-                                common::Channel::Ch4 => &mut ch4_pwm,
-                                _ => unreachable!(),
-                            };
 
-                            if v > 0.01 {
-                                ch_pwm.enable();
-                                ch_pwm.set_duty(
-                                    (ch_pwm.get_max_duty() as f32 * (1.0 - v.powf(2.8))) as u16,
-                                );
+                        dclk.set_high().unwrap();
+                        dclk.set_low().unwrap();
+                    }
+
+                    sclk.set_high().unwrap();
+                    sclk.set_low().unwrap();
+                }
+                common::HostMessage::UpdatePeak(ch, v) => {
+                    let ch_pwm: &mut dyn embedded_hal::PwmPin<Duty = u16> = match ch {
+                        common::Channel::Ch1 => &mut ch1_pwm,
+                        common::Channel::Ch2 => &mut ch2_pwm,
+                        common::Channel::Ch3 => &mut ch3_pwm,
+                        common::Channel::Ch4 => &mut ch4_pwm,
+                        _ => unreachable!(),
+                    };
+
+                    if v > 0.01 {
+                        ch_pwm.enable();
+                        ch_pwm
+                            .set_duty((ch_pwm.get_max_duty() as f32 * (1.0 - v.powf(2.8))) as u16);
+                    } else {
+                        ch_pwm.disable();
+                    }
+                }
+                common::HostMessage::UpdateChannelState(ch, state) => {
+                    let mut o_state = [0x00, 0x00];
+                    i2c.write_read(0x20, &[0x02], &mut o_state[0..1]).unwrap();
+                    i2c.write_read(0x20, &[0x03], &mut o_state[1..2]).unwrap();
+
+                    match ch {
+                        common::Channel::Ch1 => {
+                            o_state[0] &= 0b10011111;
+                            if state == Some(true) {
+                                o_state[0] |= 0b00100000;
+                            } else if state == Some(false) {
+                                o_state[0] |= 0b01000000;
+                            }
+                        }
+                        common::Channel::Ch2 => {
+                            o_state[1] &= 0b11111100;
+                            if state == Some(true) {
+                                o_state[1] |= 0b00000001;
+                            } else if state == Some(false) {
+                                o_state[1] |= 0b00000010;
+                            }
+                        }
+                        common::Channel::Ch3 => {
+                            o_state[1] &= 0b11100111;
+                            if state == Some(true) {
+                                o_state[1] |= 0b00001000;
+                            } else if state == Some(false) {
+                                o_state[1] |= 0b00010000;
+                            }
+                        }
+                        common::Channel::Ch4 => {
+                            o_state[1] &= 0b00111111;
+                            if state == Some(true) {
+                                o_state[1] |= 0b01000000;
+                            } else if state == Some(false) {
+                                o_state[1] |= 0b10000000;
+                            }
+                        }
+                        common::Channel::Main => {
+                            o_state[0] &= 0b11110011;
+                            if state == Some(true) {
+                                o_state[0] |= 0b00000100;
+                            } else if state == Some(false) {
+                                o_state[0] |= 0b00001000;
                             } else {
-                                ch_pwm.disable();
+                                rprintln!("Main channel disabled?");
                             }
-                        }
-                        common::HostMessage::UpdateChannelState(ch, state) => {
-                            let mut o_state = [0x00, 0x00];
-                            i2c.write_read(0x20, &[0x02], &mut o_state[0..1]).unwrap();
-                            i2c.write_read(0x20, &[0x03], &mut o_state[1..2]).unwrap();
-
-                            match ch {
-                                common::Channel::Ch1 => {
-                                    o_state[0] &= 0b10011111;
-                                    if state == Some(true) {
-                                        o_state[0] |= 0b00100000;
-                                    } else if state == Some(false) {
-                                        o_state[0] |= 0b01000000;
-                                    }
-                                }
-                                common::Channel::Ch2 => {
-                                    o_state[1] &= 0b11111100;
-                                    if state == Some(true) {
-                                        o_state[1] |= 0b00000001;
-                                    } else if state == Some(false) {
-                                        o_state[1] |= 0b00000010;
-                                    }
-                                }
-                                common::Channel::Ch3 => {
-                                    o_state[1] &= 0b11100111;
-                                    if state == Some(true) {
-                                        o_state[1] |= 0b00001000;
-                                    } else if state == Some(false) {
-                                        o_state[1] |= 0b00010000;
-                                    }
-                                }
-                                common::Channel::Ch4 => {
-                                    o_state[1] &= 0b00111111;
-                                    if state == Some(true) {
-                                        o_state[1] |= 0b01000000;
-                                    } else if state == Some(false) {
-                                        o_state[1] |= 0b10000000;
-                                    }
-                                }
-                                common::Channel::Main => {
-                                    o_state[0] &= 0b11110011;
-                                    if state == Some(true) {
-                                        o_state[0] |= 0b00000100;
-                                    } else if state == Some(false) {
-                                        o_state[0] |= 0b00001000;
-                                    } else {
-                                        rprintln!("Main channel disabled?");
-                                    }
-                                }
-                            }
-
-                            i2c.write(0x20, &[0x02, o_state[0]]).unwrap();
-                            i2c.write(0x20, &[0x03, o_state[1]]).unwrap();
                         }
                     }
-                } else {
-                    rprintln!("Failed decoding: {:?}", buf);
+
+                    i2c.write(0x20, &[0x02, o_state[0]]).unwrap();
+                    i2c.write(0x20, &[0x03, o_state[1]]).unwrap();
                 }
-            }
-            Err(usb_device::UsbError::WouldBlock) => (),
+            },
+            Err(usb::Error::WouldBlock) => (),
             Err(e) => rprintln!("USB read error: {:?}", e),
         }
 
         if let Some(msg) = queued_message {
-            match usb_class.write(msg) {
-                Ok(_) => queued_message = None,
-                Err(usb_device::UsbError::WouldBlock) => continue,
+            match usb_class.send_device_message(msg) {
+                Ok(()) => queued_message = None,
+                Err(usb::Error::WouldBlock) => continue,
                 Err(e) => rprintln!("USB write error: {:?}", e),
             }
         }
@@ -333,18 +289,15 @@ fn main() -> ! {
                 (0b10010010, 0b00100000) => Some(common::Channel::Ch3),
                 (0b10010010, 0b00100100) => None,
                 _ => {
-                rprintln!(
-                    "Got invalid button state: {:08b} {:08b}",
-                    i_state[0] & 0b10010010,
-                    i_state[1] & 0b00100100
-                );
-                None
-                },
+                    rprintln!(
+                        "Got invalid button state: {:08b} {:08b}",
+                        i_state[0] & 0b10010010,
+                        i_state[1] & 0b00100100
+                    );
+                    None
+                }
             } {
-                let msg = common::DeviceMessage::ToggleChannelMute(btn);
-                rprintln!("{:?}", msg);
-                let bytes = postcard::to_slice(&msg, &mut message_buf).unwrap();
-                queued_message = Some(bytes);
+                queued_message = Some(common::DeviceMessage::ToggleChannelMute(btn));
                 continue;
             }
         }
@@ -375,11 +328,8 @@ fn main() -> ! {
         for ((ch, raw), previous) in raw_values.iter().zip(previous_fader_values.iter_mut()) {
             let fader = ((*raw as f32).clamp(8.0, 3608.0) - 8.0) / 3600.0;
             if (*previous - fader).abs() > 0.01 {
-                let msg = common::DeviceMessage::UpdateVolume(*ch, fader);
-                let bytes = postcard::to_slice(&msg, &mut message_buf).unwrap();
                 *previous = fader;
-
-                queued_message = Some(bytes);
+                queued_message = Some(common::DeviceMessage::UpdateVolume(*ch, fader));
             }
         }
     }
