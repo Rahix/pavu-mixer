@@ -55,9 +55,7 @@ fn main() -> ! {
      */
 
     let mut adc1 = hal::adc::Adc::adc1(
-        dp.ADC1, // The ADC we are going to control
-        // The following is only needed to make sure the clock signal for the ADC is set up
-        // correctly.
+        dp.ADC1,
         &mut dp.ADC1_2,
         &mut rcc.ahb,
         hal::adc::CkMode::default(),
@@ -218,6 +216,8 @@ fn main() -> ! {
         }
 
         match usb_class.recv_host_message() {
+            Err(usb::Error::WouldBlock) => (),
+            Err(e) => rprintln!("USB read error: {:?}", e),
             Ok(msg) => match msg {
                 common::HostMessage::UpdatePeak(common::Channel::Main, v) => {
                     main_level.update_level(v);
@@ -283,8 +283,6 @@ fn main() -> ! {
                     i2c.write(0x20, &[0x03, o_state[1]]).unwrap();
                 }
             },
-            Err(usb::Error::WouldBlock) => (),
-            Err(e) => rprintln!("USB read error: {:?}", e),
         }
 
         if let Some(msg) = queued_message {
