@@ -160,7 +160,7 @@ fn main() -> ! {
     i2c.write_read(0x20, &[0x01], &mut buf).unwrap();
 
     // Set all outputs appropriately
-    i2c.write(0x20, &[0x02, 0b00000001]).unwrap();
+    i2c.write(0x20, &[0x02, 0b00000101]).unwrap();
     i2c.write(0x20, &[0x03, 0b00000000]).unwrap();
 
     if pca_int.is_low().unwrap() {
