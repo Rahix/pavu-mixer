@@ -1,5 +1,6 @@
 use crate::config;
 use anyhow::Context;
+use std::time;
 
 pub struct PavuMixer {
     dev_info: DeviceInfo,
@@ -20,7 +21,21 @@ struct Endpoints {
 
 impl PavuMixer {
     pub fn connect(config: &config::Connection) -> anyhow::Result<Self> {
-        let dev_info = DeviceInfo::search_device()?;
+        let strategy = backoff::ExponentialBackoff {
+            initial_interval: time::Duration::from_millis(500),
+            multiplier: 1.25,
+            max_elapsed_time: Some(time::Duration::from_secs(60)),
+            ..Default::default()
+        };
+        let dev_info = match backoff::retry(strategy, || {
+            DeviceInfo::search_device().map_err(|e| {
+                log::warn!("No USB device found, retrying...");
+                backoff::Error::Transient(e)
+            })
+        }) {
+            Ok(d) => d,
+            Err(_) => anyhow::bail!("Could not find USB device in 60 seconds, giving up"),
+        };
 
         if config.sudo_hack {
             let dev_path = std::path::PathBuf::from(format!(
