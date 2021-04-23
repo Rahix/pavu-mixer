@@ -1,14 +1,13 @@
 use stm32f3xx_hal::{gpio, prelude::*};
 
-pub struct MainLevelShiftReg {
+pub struct ShiftRegLevel {
     pub data_pin: gpio::gpiob::PB15<gpio::Output<gpio::PushPull>>,
     pub data_clock: gpio::gpiob::PB13<gpio::Output<gpio::PushPull>>,
     pub storage_clock: gpio::gpiob::PB12<gpio::Output<gpio::PushPull>>,
 }
 
-impl MainLevelShiftReg {
-    /// Write out a main channel level to the indicator
-    pub fn write_level(&mut self, level: f32) {
+impl ShiftRegLevel {
+    pub fn update_level(&mut self, level: f32) {
         let value = (level * 20.5) as u32;
 
         for i in 0..20 {

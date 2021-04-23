@@ -7,7 +7,7 @@ use rtt_target::rprintln;
 use micromath::F32Ext;
 use stm32f3xx_hal::{self as hal, pac, prelude::*};
 
-mod shiftreg;
+mod level;
 mod usb;
 
 #[cortex_m_rt::entry]
@@ -97,7 +97,7 @@ fn main() -> ! {
      * ===================================
      */
 
-    let mut main_level = shiftreg::MainLevelShiftReg {
+    let mut main_level = level::ShiftRegLevel {
         data_pin: gpiob
             .pb15
             .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper),
@@ -220,7 +220,7 @@ fn main() -> ! {
         match usb_class.recv_host_message() {
             Ok(msg) => match msg {
                 common::HostMessage::UpdatePeak(common::Channel::Main, v) => {
-                    main_level.write_level(v);
+                    main_level.update_level(v);
                 }
                 common::HostMessage::UpdatePeak(ch, v) => {
                     let ch_pwm: &mut dyn embedded_hal::PwmPin<Duty = u16> = match ch {
