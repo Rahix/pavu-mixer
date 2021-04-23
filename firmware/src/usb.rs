@@ -20,6 +20,41 @@ impl From<postcard::Error> for Error {
     }
 }
 
+/// Custom USB class for Pavu-Mixer.
+///
+/// This class provides one interface which looks like this:
+/// ```text
+/// Interface Descriptor:
+///   bLength                 9
+///   bDescriptorType         4
+///   bInterfaceNumber        0
+///   bAlternateSetting       0
+///   bNumEndpoints           2
+///   bInterfaceClass       255 Vendor Specific Class
+///   bInterfaceSubClass    195
+///   bInterfaceProtocol    195
+///   iInterface              0
+///   Endpoint Descriptor:
+///     bLength                 7
+///     bDescriptorType         5
+///     bEndpointAddress     0x01  EP 1 OUT
+///     bmAttributes            3
+///       Transfer Type            Interrupt
+///       Synch Type               None
+///       Usage Type               Data
+///     wMaxPacketSize     0x0040  1x 64 bytes
+///     bInterval              10
+///   Endpoint Descriptor:
+///     bLength                 7
+///     bDescriptorType         5
+///     bEndpointAddress     0x81  EP 1 IN
+///     bmAttributes            3
+///       Transfer Type            Interrupt
+///       Synch Type               None
+///       Usage Type               Data
+///     wMaxPacketSize     0x0040  1x 64 bytes
+///     bInterval             100
+/// ```
 pub struct PavuMixerClass<'a, B: usb_device::bus::UsbBus> {
     interface: usb_device::bus::InterfaceNumber,
     read_ep: usb_device::endpoint::EndpointOut<'a, B>,
@@ -35,6 +70,9 @@ impl<'a, B: usb_device::bus::UsbBus> PavuMixerClass<'a, B> {
         }
     }
 
+    /// Attempt receiving a message from the USB host.
+    ///
+    /// If no message could be received, `Error::WouldBlock` is returned.
     pub fn recv_host_message(&mut self) -> Result<common::HostMessage, Error> {
         let mut buf = [0x00; 64];
         let bytes_read = self.read_ep.read(&mut buf)?;
@@ -42,6 +80,9 @@ impl<'a, B: usb_device::bus::UsbBus> PavuMixerClass<'a, B> {
         Ok(msg)
     }
 
+    /// Send a message to the USB host.
+    ///
+    /// If a messages is still in-flight, this returns `Error::WouldBlock`.
     pub fn send_device_message(&mut self, msg: common::DeviceMessage) -> Result<(), Error> {
         let mut buf = [0x00; 64];
         let bytes = postcard::to_slice(&msg, &mut buf)?;
