@@ -1,5 +1,6 @@
 use micromath::F32Ext;
 
+/// Level indicator built from a shift-register chain
 pub struct ShiftRegLevel<D, DCK, SCK> {
     pub data_pin: D,
     pub data_clock: DCK,
@@ -32,6 +33,7 @@ where
     }
 }
 
+/// Level indicator built from a PWM pin
 pub struct PwmLevel<T> {
     pwm_pin: T,
 }
