@@ -7,6 +7,7 @@ use rtt_target::rprintln;
 use micromath::F32Ext;
 use stm32f3xx_hal::{self as hal, pac, prelude::*};
 
+mod shiftreg;
 mod usb;
 
 #[cortex_m_rt::entry]
@@ -92,21 +93,23 @@ fn main() -> ! {
     rprintln!("PWM initialized.");
 
     /*
-     * GPIO initialization for the main level indicator shift register
-     * ===============================================================
+     * Main level indicator shift register
+     * ===================================
      */
 
-    let mut data = gpiob
-        .pb15
-        .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
-    let mut dclk = gpiob
-        .pb13
-        .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
-    let mut sclk = gpiob
-        .pb12
-        .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
+    let mut main_level = shiftreg::MainLevelShiftReg {
+        data_pin: gpiob
+            .pb15
+            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper),
+        data_clock: gpiob
+            .pb13
+            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper),
+        storage_clock: gpiob
+            .pb12
+            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper),
+    };
 
-    rprintln!("GPIOs initialized.");
+    rprintln!("ShiftRegs initialized.");
 
     /*
      * I2C bus initialization
@@ -217,21 +220,7 @@ fn main() -> ! {
         match usb_class.recv_host_message() {
             Ok(msg) => match msg {
                 common::HostMessage::UpdatePeak(common::Channel::Main, v) => {
-                    let value = (v * 20.5) as u32;
-
-                    for i in 0..20 {
-                        if (19 - i) <= value {
-                            data.set_low().unwrap();
-                        } else {
-                            data.set_high().unwrap();
-                        }
-
-                        dclk.set_high().unwrap();
-                        dclk.set_low().unwrap();
-                    }
-
-                    sclk.set_high().unwrap();
-                    sclk.set_low().unwrap();
+                    main_level.write_level(v);
                 }
                 common::HostMessage::UpdatePeak(ch, v) => {
                     let ch_pwm: &mut dyn embedded_hal::PwmPin<Duty = u16> = match ch {
