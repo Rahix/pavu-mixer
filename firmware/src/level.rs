@@ -1,29 +1,34 @@
 use micromath::F32Ext;
-use stm32f3xx_hal::{gpio, prelude::*};
 
-pub struct ShiftRegLevel {
-    pub data_pin: gpio::gpiob::PB15<gpio::Output<gpio::PushPull>>,
-    pub data_clock: gpio::gpiob::PB13<gpio::Output<gpio::PushPull>>,
-    pub storage_clock: gpio::gpiob::PB12<gpio::Output<gpio::PushPull>>,
+pub struct ShiftRegLevel<D, DCK, SCK> {
+    pub data_pin: D,
+    pub data_clock: DCK,
+    pub storage_clock: SCK,
 }
 
-impl ShiftRegLevel {
+impl<D, DCK, SCK> ShiftRegLevel<D, DCK, SCK>
+where
+    D: embedded_hal::digital::v2::OutputPin,
+    DCK: embedded_hal::digital::v2::OutputPin,
+    SCK: embedded_hal::digital::v2::OutputPin,
+{
+    #[allow(unused_must_use)]
     pub fn update_level(&mut self, level: f32) {
         let value = (level * 20.5) as u32;
 
         for i in 0..20 {
             if (19 - i) <= value {
-                self.data_pin.set_low().unwrap();
+                self.data_pin.set_low();
             } else {
-                self.data_pin.set_high().unwrap();
+                self.data_pin.set_high();
             }
 
-            self.data_clock.set_high().unwrap();
-            self.data_clock.set_low().unwrap();
+            self.data_clock.set_high();
+            self.data_clock.set_low();
         }
 
-        self.storage_clock.set_high().unwrap();
-        self.storage_clock.set_low().unwrap();
+        self.storage_clock.set_high();
+        self.storage_clock.set_low();
     }
 }
 
@@ -31,7 +36,10 @@ pub struct PwmLevel<T> {
     pwm_pin: T,
 }
 
-impl<T: embedded_hal::PwmPin<Duty = u16>> PwmLevel<T> {
+impl<T> PwmLevel<T>
+where
+    T: embedded_hal::PwmPin<Duty = u16>,
+{
     pub fn new(pwm_pin: T) -> Self {
         Self { pwm_pin }
     }
