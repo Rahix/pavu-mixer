@@ -16,6 +16,11 @@ fn main() -> ! {
     let mut dp = pac::Peripherals::take().unwrap();
     let _cp = cortex_m::Peripherals::take().unwrap();
 
+    /*
+     * Clocks
+     * ======
+     */
+
     let mut flash = dp.FLASH.constrain();
     let mut rcc = dp.RCC.constrain();
 
@@ -28,12 +33,25 @@ fn main() -> ! {
 
     assert!(clocks.usbclk_valid());
 
+    rprintln!("Hello World!");
+
+    /*
+     *
+     * GPIO blocks
+     * ===========
+     */
+
     let mut gpioa = dp.GPIOA.split(&mut rcc.ahb);
     let mut gpiob = dp.GPIOB.split(&mut rcc.ahb);
     let mut gpioe = dp.GPIOE.split(&mut rcc.ahb);
     let mut gpiof = dp.GPIOF.split(&mut rcc.ahb);
 
-    // -----------------------------------------------
+    /*
+     * ADC initialization (faders)
+     * ===========================
+     *
+     * Note that this currently blocks for a significant amount of time due to unknown reasons...
+     */
 
     let mut adc1 = hal::adc::Adc::adc1(
         dp.ADC1, // The ADC we are going to control
@@ -55,6 +73,11 @@ fn main() -> ! {
 
     rprintln!("ADC initialized.");
 
+    /*
+     * PWM Channel initialization for channel level indicators
+     * =======================================================
+     */
+
     let tim1_channels = hal::pwm::tim1(dp.TIM1, 1280, 100.hz(), &clocks);
 
     let pe9 = gpioe.pe9.into_af2(&mut gpioe.moder, &mut gpioe.afrh);
@@ -68,6 +91,11 @@ fn main() -> ! {
 
     rprintln!("PWM initialized.");
 
+    /*
+     * GPIO initialization for the main level indicator shift register
+     * ===============================================================
+     */
+
     let mut data = gpiob
         .pb15
         .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
@@ -79,6 +107,11 @@ fn main() -> ! {
         .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
 
     rprintln!("GPIOs initialized.");
+
+    /*
+     * I2C bus initialization
+     * ======================
+     */
 
     let pins = (
         gpiob.pb6.into_af4(&mut gpiob.moder, &mut gpiob.afrl), // SCL
@@ -135,10 +168,17 @@ fn main() -> ! {
 
     rprintln!("PCA9555 initialized.");
 
-    // F3 Discovery board has a pull-up resistor on the D+ line.
-    // Pull the D+ pin down to send a RESET condition to the USB bus.
-    // This forced reset is needed only for development, without it host
-    // will not reset your device when you upload new firmware.
+    /*
+     * USB FS
+     * ======
+     */
+
+    /*
+     * F3 Discovery board has a pull-up resistor on the D+ line.
+     * Pull the D+ pin down to send a RESET condition to the USB bus.
+     * This forced reset is needed only for development, without it host
+     * will not reset your device when you upload new firmware.
+     */
     let mut usb_dp = gpioa
         .pa12
         .into_push_pull_output(&mut gpioa.moder, &mut gpioa.otyper);
