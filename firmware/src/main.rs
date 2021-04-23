@@ -85,10 +85,10 @@ fn main() -> ! {
     let pe11 = gpioe.pe11.into_af2(&mut gpioe.moder, &mut gpioe.afrh);
     let pe13 = gpioe.pe13.into_af2(&mut gpioe.moder, &mut gpioe.afrh);
     let pe14 = gpioe.pe14.into_af2(&mut gpioe.moder, &mut gpioe.afrh);
-    let mut ch1_pwm = tim1_channels.0.output_to_pe9(pe9);
-    let mut ch2_pwm = tim1_channels.1.output_to_pe11(pe11);
-    let mut ch3_pwm = tim1_channels.2.output_to_pe13(pe13);
-    let mut ch4_pwm = tim1_channels.3.output_to_pe14(pe14);
+    let mut ch1_level = level::PwmLevel::new(tim1_channels.0.output_to_pe9(pe9));
+    let mut ch2_level = level::PwmLevel::new(tim1_channels.1.output_to_pe11(pe11));
+    let mut ch3_level = level::PwmLevel::new(tim1_channels.2.output_to_pe13(pe13));
+    let mut ch4_level = level::PwmLevel::new(tim1_channels.3.output_to_pe14(pe14));
 
     rprintln!("PWM initialized.");
 
@@ -222,23 +222,13 @@ fn main() -> ! {
                 common::HostMessage::UpdatePeak(common::Channel::Main, v) => {
                     main_level.update_level(v);
                 }
-                common::HostMessage::UpdatePeak(ch, v) => {
-                    let ch_pwm: &mut dyn embedded_hal::PwmPin<Duty = u16> = match ch {
-                        common::Channel::Ch1 => &mut ch1_pwm,
-                        common::Channel::Ch2 => &mut ch2_pwm,
-                        common::Channel::Ch3 => &mut ch3_pwm,
-                        common::Channel::Ch4 => &mut ch4_pwm,
-                        _ => unreachable!(),
-                    };
-
-                    if v > 0.01 {
-                        ch_pwm.enable();
-                        ch_pwm
-                            .set_duty((ch_pwm.get_max_duty() as f32 * (1.0 - v.powf(2.8))) as u16);
-                    } else {
-                        ch_pwm.disable();
-                    }
-                }
+                common::HostMessage::UpdatePeak(ch, v) => match ch {
+                    common::Channel::Ch1 => ch1_level.update_level(v),
+                    common::Channel::Ch2 => ch2_level.update_level(v),
+                    common::Channel::Ch3 => ch3_level.update_level(v),
+                    common::Channel::Ch4 => ch4_level.update_level(v),
+                    _ => unreachable!(),
+                },
                 common::HostMessage::UpdateChannelState(ch, state) => {
                     let mut o_state = [0x00, 0x00];
                     i2c.write_read(0x20, &[0x02], &mut o_state[0..1]).unwrap();
