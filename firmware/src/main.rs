@@ -350,7 +350,7 @@ fn main() -> ! {
         ];
 
         for ((ch, raw), previous) in raw_values.iter().zip(previous_fader_values.iter_mut()) {
-            let fader = ((*raw as f32).clamp(8.0, 3608.0) - 8.0) / 3600.0;
+            let fader = ((*raw as f32).clamp(8.0, 3308.0) - 8.0) / 3300.0;
             if (*previous - fader).abs() > 0.01 {
                 *previous = fader;
                 queued_message = Some(common::DeviceMessage::UpdateVolume(*ch, fader));
