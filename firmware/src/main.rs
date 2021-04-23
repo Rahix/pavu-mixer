@@ -48,6 +48,27 @@ fn main() -> ! {
     let mut gpiof = dp.GPIOF.split(&mut rcc.ahb);
 
     /*
+     * Main level indicator shift register
+     * ===================================
+     */
+
+    let mut main_level = level::ShiftRegLevel {
+        data_pin: gpiob
+            .pb15
+            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper),
+        data_clock: gpiob
+            .pb13
+            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper),
+        storage_clock: gpiob
+            .pb12
+            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper),
+    };
+
+    rprintln!("ShiftRegs initialized.");
+    main_level.update_level(1.0 / 5.0);
+
+
+    /*
      * ADC initialization (faders)
      * ===========================
      *
@@ -71,6 +92,7 @@ fn main() -> ! {
     let mut previous_fader_values = [-1000.0f32; 5];
 
     rprintln!("ADC initialized.");
+    main_level.update_level(2.0 / 5.0);
 
     /*
      * PWM Channel initialization for channel level indicators
@@ -89,25 +111,7 @@ fn main() -> ! {
     let mut ch4_level = level::PwmLevel::new(tim1_channels.3.output_to_pe14(pe14));
 
     rprintln!("PWM initialized.");
-
-    /*
-     * Main level indicator shift register
-     * ===================================
-     */
-
-    let mut main_level = level::ShiftRegLevel {
-        data_pin: gpiob
-            .pb15
-            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper),
-        data_clock: gpiob
-            .pb13
-            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper),
-        storage_clock: gpiob
-            .pb12
-            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper),
-    };
-
-    rprintln!("ShiftRegs initialized.");
+    main_level.update_level(3.0 / 5.0);
 
     /*
      * I2C bus initialization
@@ -168,6 +172,7 @@ fn main() -> ! {
     }
 
     rprintln!("PCA9555 initialized.");
+    main_level.update_level(4.0 / 5.0);
 
     /*
      * USB FS
@@ -206,6 +211,8 @@ fn main() -> ! {
     .build();
 
     rprintln!("USB device initialized.");
+    main_level.update_level(5.0 / 5.0);
+
     rprintln!("Ready.");
     rprintln!("");
 
