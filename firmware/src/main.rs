@@ -263,21 +263,33 @@ fn main() -> ! {
                         mute_sync_ch1
                             .set_button_led(mute_sync::Led::from_state(state))
                             .unwrap();
+                        if state.is_none() {
+                            ch1_level.update_level(0.0);
+                        }
                     }
                     common::Channel::Ch2 => {
                         mute_sync_ch2
                             .set_button_led(mute_sync::Led::from_state(state))
                             .unwrap();
+                        if state.is_none() {
+                            ch2_level.update_level(0.0);
+                        }
                     }
                     common::Channel::Ch3 => {
                         mute_sync_ch3
                             .set_button_led(mute_sync::Led::from_state(state))
                             .unwrap();
+                        if state.is_none() {
+                            ch3_level.update_level(0.0);
+                        }
                     }
                     common::Channel::Ch4 => {
                         mute_sync_ch4
                             .set_button_led(mute_sync::Led::from_state(state))
                             .unwrap();
+                        if state.is_none() {
+                            ch4_level.update_level(0.0);
+                        }
                     }
                     common::Channel::Main => {
                         mute_sync_main
