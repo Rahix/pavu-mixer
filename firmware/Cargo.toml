@@ -20,6 +20,8 @@ usbd-serial = "0.1.1"
 waveshare-display = { path = "../waveshare-display/" }
 common = { path = "../common/", package = "pavu-mixer-common" }
 embedded-hal = "0.2.4"
+port-expander = "0.2.0"
+shared-bus = "0.2.2"
 
 [[bin]]
 name = "pavu-mixer-firmware"

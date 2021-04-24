@@ -8,6 +8,7 @@ use micromath::F32Ext;
 use stm32f3xx_hal::{self as hal, pac, prelude::*};
 
 mod level;
+mod mute_sync;
 mod usb;
 
 #[cortex_m_rt::entry]
@@ -66,7 +67,6 @@ fn main() -> ! {
 
     rprintln!("ShiftRegs initialized.");
     main_level.update_level(1.0 / 5.0);
-
 
     /*
      * ADC initialization (faders)
@@ -127,51 +127,73 @@ fn main() -> ! {
         .pa10
         .into_floating_input(&mut gpioa.moder, &mut gpioa.pupdr);
 
-    let mut i2c = hal::i2c::I2c::new(dp.I2C1, pins, 100.khz(), clocks, &mut rcc.apb1);
+    let i2c = shared_bus::BusManagerSimple::new(hal::i2c::I2c::new(
+        dp.I2C1,
+        pins,
+        100.khz(),
+        clocks,
+        &mut rcc.apb1,
+    ));
 
     rprintln!("I2C bus initialized.");
 
-    i2c.write(0x41, &[0x03, 0x00]).unwrap();
-    i2c.write(0x41, &[0x01, 0x0F]).unwrap();
+    let mut pca9536 = port_expander::Pca9536::new(i2c.acquire_i2c());
+    let pca9536_pins = pca9536.split();
+    let mut pca9555 = port_expander::Pca9555::new(i2c.acquire_i2c(), false, false, false);
+    let pca9555_pins = pca9555.split();
 
-    rprintln!("PCA9536 initialized.");
-
-    // Configure IO0
-    //  0: DESYNC_MAIN      = OUTPUT
-    //  1: MUTE_MAIN_BTN    = INPUT
-    //  2: MUTE_MAIN_LED1   = OUTPUT
-    //  3: MUTE_MAIN_LED2   = OUTPUT
-    //  4: MUTE1_BTN        = INPUT
-    //  5: MUTE1_LED1       = OUTPUT
-    //  6: MUTE1_LED2       = OUTPUT
-    //  7: MUTE2_BTN        = INPUT
-    i2c.write(0x20, &[0x06, 0b10010010]).unwrap();
-
-    // Configure IO1
-    //  0: MUTE2_LED1       = OUTPUT
-    //  1: MUTE2_LED2       = OUTPUT
-    //  2: MUTE3_BTN        = INPUT
-    //  3: MUTE3_LED1       = OUTPUT
-    //  4: MUTE3_LED2       = OUTPUT
-    //  5: MUTE4_BTN        = INPUT
-    //  6: MUTE4_LED1       = OUTPUT
-    //  7: MUTE4_LED2       = OUTPUT
-    i2c.write(0x20, &[0x07, 0b00100100]).unwrap();
+    let mut mute_sync_main = mute_sync::ChannelMuteSync {
+        sync_led: pca9555_pins.io0_0.into_output().unwrap(),
+        button_led1: pca9555_pins.io0_2.into_output().unwrap(),
+        button_led2: pca9555_pins.io0_3.into_output().unwrap(),
+        button: pca9555_pins.io0_1,
+    };
+    let mut mute_sync_ch1 = mute_sync::ChannelMuteSync {
+        sync_led: pca9536_pins.io0.into_output().unwrap(),
+        button_led1: pca9555_pins.io0_5.into_output().unwrap(),
+        button_led2: pca9555_pins.io0_6.into_output().unwrap(),
+        button: pca9555_pins.io0_4,
+    };
+    let mut mute_sync_ch2 = mute_sync::ChannelMuteSync {
+        sync_led: pca9536_pins.io1.into_output().unwrap(),
+        button_led1: pca9555_pins.io1_0.into_output().unwrap(),
+        button_led2: pca9555_pins.io1_1.into_output().unwrap(),
+        button: pca9555_pins.io0_7,
+    };
+    let mut mute_sync_ch3 = mute_sync::ChannelMuteSync {
+        sync_led: pca9536_pins.io2.into_output().unwrap(),
+        button_led1: pca9555_pins.io1_3.into_output().unwrap(),
+        button_led2: pca9555_pins.io1_4.into_output().unwrap(),
+        button: pca9555_pins.io1_2,
+    };
+    let mut mute_sync_ch4 = mute_sync::ChannelMuteSync {
+        sync_led: pca9536_pins.io3.into_output().unwrap(),
+        button_led1: pca9555_pins.io1_6.into_output().unwrap(),
+        button_led2: pca9555_pins.io1_7.into_output().unwrap(),
+        button: pca9555_pins.io1_5,
+    };
 
     // Read inputs once to clear interrupt
-    let mut buf = [0x00];
-    i2c.write_read(0x20, &[0x00], &mut buf).unwrap();
-    i2c.write_read(0x20, &[0x01], &mut buf).unwrap();
+    mute_sync_main.read_button_state().unwrap();
+    mute_sync_ch1.read_button_state().unwrap();
+    mute_sync_ch2.read_button_state().unwrap();
+    mute_sync_ch3.read_button_state().unwrap();
+    mute_sync_ch4.read_button_state().unwrap();
 
     // Set all outputs appropriately
-    i2c.write(0x20, &[0x02, 0b00000101]).unwrap();
-    i2c.write(0x20, &[0x03, 0b00000000]).unwrap();
+    mute_sync_main
+        .set_button_led(mute_sync::Led::Green)
+        .unwrap();
+    mute_sync_ch1.set_button_led(mute_sync::Led::Off).unwrap();
+    mute_sync_ch2.set_button_led(mute_sync::Led::Off).unwrap();
+    mute_sync_ch3.set_button_led(mute_sync::Led::Off).unwrap();
+    mute_sync_ch4.set_button_led(mute_sync::Led::Off).unwrap();
 
     if pca_int.is_low().unwrap() {
         rprintln!("PCA interrupt is asserted when it should not be!");
     }
 
-    rprintln!("PCA9555 initialized.");
+    rprintln!("PCA9536 & PCA9555 initialized.");
     main_level.update_level(4.0 / 5.0);
 
     /*
@@ -236,59 +258,33 @@ fn main() -> ! {
                     common::Channel::Ch4 => ch4_level.update_level(v),
                     _ => unreachable!(),
                 },
-                common::HostMessage::UpdateChannelState(ch, state) => {
-                    let mut o_state = [0x00, 0x00];
-                    i2c.write_read(0x20, &[0x02], &mut o_state[0..1]).unwrap();
-                    i2c.write_read(0x20, &[0x03], &mut o_state[1..2]).unwrap();
-
-                    match ch {
-                        common::Channel::Ch1 => {
-                            o_state[0] &= 0b10011111;
-                            if state == Some(true) {
-                                o_state[0] |= 0b00100000;
-                            } else if state == Some(false) {
-                                o_state[0] |= 0b01000000;
-                            }
-                        }
-                        common::Channel::Ch2 => {
-                            o_state[1] &= 0b11111100;
-                            if state == Some(true) {
-                                o_state[1] |= 0b00000001;
-                            } else if state == Some(false) {
-                                o_state[1] |= 0b00000010;
-                            }
-                        }
-                        common::Channel::Ch3 => {
-                            o_state[1] &= 0b11100111;
-                            if state == Some(true) {
-                                o_state[1] |= 0b00001000;
-                            } else if state == Some(false) {
-                                o_state[1] |= 0b00010000;
-                            }
-                        }
-                        common::Channel::Ch4 => {
-                            o_state[1] &= 0b00111111;
-                            if state == Some(true) {
-                                o_state[1] |= 0b01000000;
-                            } else if state == Some(false) {
-                                o_state[1] |= 0b10000000;
-                            }
-                        }
-                        common::Channel::Main => {
-                            o_state[0] &= 0b11110011;
-                            if state == Some(true) {
-                                o_state[0] |= 0b00000100;
-                            } else if state == Some(false) {
-                                o_state[0] |= 0b00001000;
-                            } else {
-                                rprintln!("Main channel disabled?");
-                            }
-                        }
+                common::HostMessage::UpdateChannelState(ch, state) => match ch {
+                    common::Channel::Ch1 => {
+                        mute_sync_ch1
+                            .set_button_led(mute_sync::Led::from_state(state))
+                            .unwrap();
                     }
-
-                    i2c.write(0x20, &[0x02, o_state[0]]).unwrap();
-                    i2c.write(0x20, &[0x03, o_state[1]]).unwrap();
-                }
+                    common::Channel::Ch2 => {
+                        mute_sync_ch2
+                            .set_button_led(mute_sync::Led::from_state(state))
+                            .unwrap();
+                    }
+                    common::Channel::Ch3 => {
+                        mute_sync_ch3
+                            .set_button_led(mute_sync::Led::from_state(state))
+                            .unwrap();
+                    }
+                    common::Channel::Ch4 => {
+                        mute_sync_ch4
+                            .set_button_led(mute_sync::Led::from_state(state))
+                            .unwrap();
+                    }
+                    common::Channel::Main => {
+                        mute_sync_main
+                            .set_button_led(mute_sync::Led::from_state(state))
+                            .unwrap();
+                    }
+                },
             },
         }
 
@@ -301,25 +297,18 @@ fn main() -> ! {
         }
 
         if pca_int.is_low().unwrap() {
-            let mut i_state = [0x00, 0x00];
-            i2c.write_read(0x20, &[0x00], &mut i_state[0..1]).unwrap();
-            i2c.write_read(0x20, &[0x01], &mut i_state[1..2]).unwrap();
-
-            if let Some(btn) = match (i_state[0] & 0b10010010, i_state[1] & 0b00100100) {
-                (0b00010010, 0b00100100) => Some(common::Channel::Ch2),
-                (0b10000010, 0b00100100) => Some(common::Channel::Ch1),
-                (0b10010000, 0b00100100) => Some(common::Channel::Main),
-                (0b10010010, 0b00000100) => Some(common::Channel::Ch4),
-                (0b10010010, 0b00100000) => Some(common::Channel::Ch3),
-                (0b10010010, 0b00100100) => None,
-                _ => {
-                    rprintln!(
-                        "Got invalid button state: {:08b} {:08b}",
-                        i_state[0] & 0b10010010,
-                        i_state[1] & 0b00100100
-                    );
-                    None
-                }
+            if let Some(btn) = if mute_sync_main.read_button_state().unwrap() {
+                Some(common::Channel::Main)
+            } else if mute_sync_ch1.read_button_state().unwrap() {
+                Some(common::Channel::Ch1)
+            } else if mute_sync_ch2.read_button_state().unwrap() {
+                Some(common::Channel::Ch2)
+            } else if mute_sync_ch3.read_button_state().unwrap() {
+                Some(common::Channel::Ch3)
+            } else if mute_sync_ch4.read_button_state().unwrap() {
+                Some(common::Channel::Ch4)
+            } else {
+                None
             } {
                 queued_message = Some(common::DeviceMessage::ToggleChannelMute(btn));
                 continue;
