@@ -37,44 +37,58 @@ fn main() -> ! {
         .pa10
         .into_floating_input(&mut gpioa.moder, &mut gpioa.pupdr);
 
-    let mut i2c = hal::i2c::I2c::new(dp.I2C1, pins, 100.khz(), clocks, &mut rcc.apb1);
+    let i2c = hal::i2c::I2c::new(dp.I2C1, pins, 100.khz(), clocks, &mut rcc.apb1);
+
+    let mut pca = port_expander::Pca9555::new(i2c, false, false, false);
+    let pins = pca.split();
 
     rprintln!("Initialization completed.");
 
-    // Configure IO0
-    //  0: DESYNC_MAIN      = OUTPUT
-    //  1: MUTE_MAIN_BTN    = INPUT
-    //  2: MUTE_MAIN_LED1   = OUTPUT
-    //  3: MUTE_MAIN_LED2   = OUTPUT
-    //  4: MUTE1_BTN        = INPUT
-    //  5: MUTE1_LED1       = OUTPUT
-    //  6: MUTE1_LED2       = OUTPUT
-    //  7: MUTE2_BTN        = INPUT
-    i2c.write(0x20, &[0x06, 0b10010010]).unwrap();
+    let desync_main = pins.io0_0.into_output().unwrap();
+    let mut mute_main_btn = pins.io0_1;
+    let mut mute_main_led1 = pins.io0_2.into_output().unwrap();
+    let mut mute_main_led2 = pins.io0_3.into_output().unwrap();
+    let mut mute1_btn = pins.io0_4;
+    let mut mute1_led1 = pins.io0_5.into_output().unwrap();
+    let mut mute1_led2 = pins.io0_6.into_output().unwrap();
+    let mut mute2_btn = pins.io0_7;
+    let mut mute2_led1 = pins.io1_0.into_output().unwrap();
+    let mut mute2_led2 = pins.io1_1.into_output().unwrap();
+    let mut mute3_btn = pins.io1_2;
+    let mut mute3_led1 = pins.io1_3.into_output().unwrap();
+    let mut mute3_led2 = pins.io1_4.into_output().unwrap();
+    let mut mute4_btn = pins.io1_5;
+    let mut mute4_led1 = pins.io1_6.into_output().unwrap();
+    let mut mute4_led2 = pins.io1_7.into_output().unwrap();
 
-    // Configure IO1
-    //  0: MUTE2_LED1       = OUTPUT
-    //  1: MUTE2_LED2       = OUTPUT
-    //  2: MUTE3_BTN        = INPUT
-    //  3: MUTE3_LED1       = OUTPUT
-    //  4: MUTE3_LED2       = OUTPUT
-    //  5: MUTE4_BTN        = INPUT
-    //  6: MUTE4_LED1       = OUTPUT
-    //  7: MUTE4_LED2       = OUTPUT
-    i2c.write(0x20, &[0x07, 0b00100100]).unwrap();
-
-    rprintln!("Initialized PCA.");
+    rprintln!("Initialized PCA9555.");
 
     // Read inputs once to clear interrupt
-    let mut buf = [0x00];
-    i2c.write_read(0x20, &[0x00], &mut buf).unwrap();
-    rprintln!("Reading 0: {:08b}", buf[0]);
-    i2c.write_read(0x20, &[0x01], &mut buf).unwrap();
-    rprintln!("Reading 1: {:08b}", buf[0]);
+    for btn in [
+        &mut mute_main_btn,
+        &mut mute1_btn,
+        &mut mute2_btn,
+        &mut mute3_btn,
+        &mut mute4_btn,
+    ]
+    .iter_mut()
+    {
+        btn.is_high().unwrap();
+    }
 
     // Make all button LEDs green
-    i2c.write(0x20, &[0x02, 0b00100101]).unwrap();
-    i2c.write(0x20, &[0x03, 0b01001001]).unwrap();
+    for (led1, led2) in [
+        (&mut mute_main_led1, &mut mute_main_led2),
+        (&mut mute1_led1, &mut mute1_led2),
+        (&mut mute2_led1, &mut mute2_led2),
+        (&mut mute3_led1, &mut mute3_led2),
+        (&mut mute4_led1, &mut mute4_led2),
+    ]
+    .iter_mut()
+    {
+        led1.set_high().unwrap();
+        led2.set_low().unwrap();
+    }
 
     rprintln!("Ready for the action!");
 
@@ -84,71 +98,49 @@ fn main() -> ! {
 
         // find out which input caused the interrupt
 
-        let mut buf = [0x00, 0x00];
-        i2c.write_read(0x20, &[0x00], &mut buf[0..1]).unwrap();
-        i2c.write_read(0x20, &[0x01], &mut buf[1..2]).unwrap();
-        let btn = match (buf[0] & 0b10010010, buf[1] & 0b00100100) {
-            (0b00010010, 0b00100100) => Some(2),
-            (0b10000010, 0b00100100) => Some(1),
-            (0b10010000, 0b00100100) => Some(0),
-            (0b10010010, 0b00000100) => Some(4),
-            (0b10010010, 0b00100000) => Some(3),
-            _ => {
-                rprintln!(
-                    "Got invalid button state: {:08b} {:08b}",
-                    buf[0] & 0b10010010,
-                    buf[1] & 0b00100100
-                );
-                None
-            }
-        };
-        if let Some(btn) = btn {
-            rprintln!("Got button: {}", btn);
-
-            let mut buf = [0x00, 0x00];
-            i2c.write_read(0x20, &[0x02], &mut buf[0..1]).unwrap();
-            i2c.write_read(0x20, &[0x03], &mut buf[1..2]).unwrap();
-
-            match btn {
-                0 => {
-                    buf[0] &= 0b11110011;
-                    buf[0] |= 0b00001000;
-                }
-                1 => {
-                    buf[0] &= 0b10011111;
-                    buf[0] |= 0b01000000;
-                }
-                2 => {
-                    buf[1] &= 0b11111100;
-                    buf[1] |= 0b00000010;
-                }
-                3 => {
-                    buf[1] &= 0b11100111;
-                    buf[1] |= 0b00010000;
-                }
-                4 => {
-                    buf[1] &= 0b00111111;
-                    buf[1] |= 0b10000000;
-                }
-                _ => unreachable!(),
-            }
-
-            i2c.write(0x20, &[0x02, buf[0]]).unwrap();
-            i2c.write(0x20, &[0x03, buf[1]]).unwrap();
-
-            for _ in 0..10 {
-                buf[0] &= 0b11111110;
-                i2c.write(0x20, &[0x02, buf[0]]).unwrap();
-                delay.delay_ms(50u16);
-                buf[0] |= 0b00000001;
-                i2c.write(0x20, &[0x02, buf[0]]).unwrap();
-                delay.delay_ms(50u16);
+        let mut event = None;
+        for (i, btn) in [
+            &mut mute_main_btn,
+            &mut mute1_btn,
+            &mut mute2_btn,
+            &mut mute3_btn,
+            &mut mute4_btn,
+        ]
+        .iter_mut()
+        .enumerate()
+        {
+            if btn.is_low().unwrap() {
+                rprintln!("Button {} was pressed!", i);
+                event = Some(i);
+                break;
             }
         }
+        if event.is_none() {
+            rprintln!("Interrupt, but no button pressed?");
+        }
 
-        // Make all button LEDs green again
-        i2c.write(0x20, &[0x02, 0b00100101]).unwrap();
-        i2c.write(0x20, &[0x03, 0b01001001]).unwrap();
+        if let Some(btn) = event {
+            let (ref mut led1, ref mut led2) = [
+                (&mut mute_main_led1, &mut mute_main_led2),
+                (&mut mute1_led1, &mut mute1_led2),
+                (&mut mute2_led1, &mut mute2_led2),
+                (&mut mute3_led1, &mut mute3_led2),
+                (&mut mute4_led1, &mut mute4_led2),
+            ][btn];
+
+            led2.set_high().unwrap();
+            led1.set_low().unwrap();
+
+            for _ in 0..10 {
+                desync_main.set_low().unwrap();
+                delay.delay_ms(50u16);
+                desync_main.set_high().unwrap();
+                delay.delay_ms(50u16);
+            }
+
+            led1.set_high().unwrap();
+            led2.set_low().unwrap();
+        }
     }
 }
 
