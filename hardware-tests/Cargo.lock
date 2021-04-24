@@ -225,9 +225,9 @@ checksum = "acbf547ad0c65e31259204bd90935776d1c693cec2f4ff7abb7a1bbbd40dfe58"
 
 [[package]]
 name = "port-expander"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "588c84aa4782ace818a561ec8b09870bdbe5ef3cd8c79cbcfba2e5135cc78005"
+checksum = "f97cdf5e6bc5d08695dd3d0ed628c954b3d2c66201975de8f7aa622834631d39"
 dependencies = [
  "embedded-hal",
  "shared-bus",

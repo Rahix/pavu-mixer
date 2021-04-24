@@ -44,7 +44,7 @@ fn main() -> ! {
 
     rprintln!("Initialization completed.");
 
-    let desync_main = pins.io0_0.into_output().unwrap();
+    let mut desync_main = pins.io0_0.into_output().unwrap();
     let mut mute_main_btn = pins.io0_1;
     let mut mute_main_led1 = pins.io0_2.into_output().unwrap();
     let mut mute_main_led2 = pins.io0_3.into_output().unwrap();
