@@ -12,6 +12,7 @@ cortex-m = "0.7.2"
 cortex-m-rt = "0.6.13"
 micromath = "1.1.1"
 panic-rtt-target = { version = "0.1.1", features = ["cortex-m"] }
+port-expander = "0.1.0"
 rtt-target = { version = "0.3.0", features = ["cortex-m"] }
 stm32f3xx-hal = { version = "0.6.1", features = ["stm32f303xc", "stm32-usbd"] }
 usb-device = "0.2.8"

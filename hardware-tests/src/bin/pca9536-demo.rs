@@ -32,25 +32,26 @@ fn main() -> ! {
         gpiob.pb7.into_af4(&mut gpiob.moder, &mut gpiob.afrl), // SDA
     );
 
-    let mut i2c = hal::i2c::I2c::new(dp.I2C1, pins, 100.khz(), clocks, &mut rcc.apb1);
+    let i2c = hal::i2c::I2c::new(dp.I2C1, pins, 100.khz(), clocks, &mut rcc.apb1);
 
+    let mut pca = port_expander::Pca9536::new(i2c);
+    let pins = pca.split();
+    let mut pins = [
+        pins.io0.into_output().unwrap(),
+        pins.io1.into_output().unwrap(),
+        pins.io2.into_output().unwrap(),
+        pins.io3.into_output().unwrap(),
+    ];
+
+    rprintln!("Initialized PCA9536.");
     rprintln!("Initialization completed.");
 
-    // All pins outputs
-    i2c.write(0x41, &[0x03, 0x00]).unwrap();
-    i2c.write(0x41, &[0x01, 0x0F]).unwrap();
-
-    rprintln!("Initialized PCA.");
-
-    let mut count = 0;
     loop {
-        let pinvals = 1 << (count % 4);
-
-        rprintln!("Setting {:04b}.", pinvals);
-        i2c.write(0x41, &[0x01, !pinvals]).unwrap();
-
-        delay.delay_ms(200u16);
-        count += 1;
+        for pin in pins.iter_mut() {
+            pin.set_low().unwrap();
+            delay.delay_ms(200u16);
+            pin.set_high().unwrap();
+        }
     }
 }
 
