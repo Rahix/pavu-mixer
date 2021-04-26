@@ -13,6 +13,9 @@ fn main() {
         Ok(_) => eprintln!("Success!"),
         Err(e) => eprintln!("{:?}", e),
     }
+
+    // TODO: Find out why dropping `pa` causes a SEGFAULT and properly fix this...
+    std::mem::forget(pa);
 }
 
 fn inner(pa: &mut pa::PulseInterface) -> anyhow::Result<()> {
