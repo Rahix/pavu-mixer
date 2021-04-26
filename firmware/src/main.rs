@@ -71,8 +71,6 @@ fn main() -> ! {
     /*
      * ADC initialization (faders)
      * ===========================
-     *
-     * Note that this currently blocks for a significant amount of time due to unknown reasons...
      */
 
     let mut adc1 = hal::adc::Adc::adc1(
