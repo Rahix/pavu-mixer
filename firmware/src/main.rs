@@ -49,6 +49,18 @@ fn main() -> ! {
     let mut gpiof = dp.GPIOF.split(&mut rcc.ahb);
 
     /*
+     * Display
+     * =======
+     * TODO: The actual display code...
+     */
+
+    let mut backlight_gpio = gpiob
+        .pb0
+        .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
+    // Turn off backlight for now
+    backlight_gpio.set_low().unwrap();
+
+    /*
      * Main level indicator shift register
      * ===================================
      */
