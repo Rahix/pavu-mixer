@@ -28,9 +28,9 @@ fn main() -> ! {
 
     let clocks = rcc
         .cfgr
-        .use_hse(8u32.mhz())
-        .sysclk(48u32.mhz())
-        .pclk1(24u32.mhz())
+        .use_hse(8u32.MHz())
+        .sysclk(48u32.MHz())
+        .pclk1(24u32.MHz())
         .freeze(&mut flash.acr);
 
     assert!(clocks.usbclk_valid());
@@ -99,12 +99,20 @@ fn main() -> ! {
      * =======================================================
      */
 
-    let tim1_channels = hal::pwm::tim1(dp.TIM1, 1280, 100.hz(), &clocks);
+    let tim1_channels = hal::pwm::tim1(dp.TIM1, 1280, 100.Hz(), &clocks);
 
-    let pe9 = gpioe.pe9.into_af2(&mut gpioe.moder, &mut gpioe.afrh);
-    let pe11 = gpioe.pe11.into_af2(&mut gpioe.moder, &mut gpioe.afrh);
-    let pe13 = gpioe.pe13.into_af2(&mut gpioe.moder, &mut gpioe.afrh);
-    let pe14 = gpioe.pe14.into_af2(&mut gpioe.moder, &mut gpioe.afrh);
+    let pe9 = gpioe
+        .pe9
+        .into_af2_push_pull(&mut gpioe.moder, &mut gpioe.otyper, &mut gpioe.afrh);
+    let pe11 = gpioe
+        .pe11
+        .into_af2_push_pull(&mut gpioe.moder, &mut gpioe.otyper, &mut gpioe.afrh);
+    let pe13 = gpioe
+        .pe13
+        .into_af2_push_pull(&mut gpioe.moder, &mut gpioe.otyper, &mut gpioe.afrh);
+    let pe14 = gpioe
+        .pe14
+        .into_af2_push_pull(&mut gpioe.moder, &mut gpioe.otyper, &mut gpioe.afrh);
     let mut ch1_level = level::PwmLevel::new(tim1_channels.0.output_to_pe9(pe9));
     let mut ch2_level = level::PwmLevel::new(tim1_channels.1.output_to_pe11(pe11));
     let mut ch3_level = level::PwmLevel::new(tim1_channels.2.output_to_pe13(pe13));
@@ -118,10 +126,16 @@ fn main() -> ! {
      * ======================
      */
 
-    let pins = (
-        gpiob.pb6.into_af4(&mut gpiob.moder, &mut gpiob.afrl), // SCL
-        gpiob.pb7.into_af4(&mut gpiob.moder, &mut gpiob.afrl), // SDA
-    );
+    let mut scl =
+        gpiob
+            .pb6
+            .into_af4_open_drain(&mut gpiob.moder, &mut gpiob.otyper, &mut gpiob.afrl);
+    let mut sda =
+        gpiob
+            .pb7
+            .into_af4_open_drain(&mut gpiob.moder, &mut gpiob.otyper, &mut gpiob.afrl);
+    scl.internal_pull_up(&mut gpiob.pupdr, true);
+    sda.internal_pull_up(&mut gpiob.pupdr, true);
 
     let pca_int = gpioa
         .pa10
@@ -129,8 +143,8 @@ fn main() -> ! {
 
     let i2c = shared_bus::BusManagerSimple::new(hal::i2c::I2c::new(
         dp.I2C1,
-        pins,
-        100.khz(),
+        (scl, sda),
+        100_000.Hz(),
         clocks,
         &mut rcc.apb1,
     ));
@@ -215,8 +229,12 @@ fn main() -> ! {
 
     let usb = hal::usb::Peripheral {
         usb: dp.USB,
-        pin_dm: gpioa.pa11.into_af14(&mut gpioa.moder, &mut gpioa.afrh),
-        pin_dp: usb_dp.into_af14(&mut gpioa.moder, &mut gpioa.afrh),
+        pin_dm: gpioa.pa11.into_af14_push_pull(
+            &mut gpioa.moder,
+            &mut gpioa.otyper,
+            &mut gpioa.afrh,
+        ),
+        pin_dp: usb_dp.into_af14_push_pull(&mut gpioa.moder, &mut gpioa.otyper, &mut gpioa.afrh),
     };
     let usb_bus = hal::usb::UsbBus::new(usb);
 

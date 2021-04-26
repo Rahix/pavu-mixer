@@ -14,7 +14,6 @@ micromath = "1.1.1"
 panic-rtt-target = { version = "0.1.1", features = ["cortex-m"] }
 postcard = "0.6.1"
 rtt-target = { version = "0.3.0", features = ["cortex-m"] }
-stm32f3xx-hal = { version = "0.6.1", features = ["stm32f303xc", "stm32-usbd"] }
 usb-device = "0.2.8"
 usbd-serial = "0.1.1"
 waveshare-display = { path = "../waveshare-display/" }
@@ -22,6 +21,11 @@ common = { path = "../common/", package = "pavu-mixer-common" }
 embedded-hal = "0.2.4"
 port-expander = "0.2.0"
 shared-bus = "0.2.2"
+
+[dependencies.stm32f3xx-hal]
+git = "https://github.com/stm32-rs/stm32f3xx-hal.git"
+rev = "ff651241dc32b140709a2d3bcd05f9594b4f169a"
+features = ["stm32f303xc", "stm32-usbd"]
 
 [[bin]]
 name = "pavu-mixer-firmware"
