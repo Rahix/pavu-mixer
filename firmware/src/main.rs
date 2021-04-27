@@ -78,7 +78,6 @@ fn main() -> ! {
     };
 
     rprintln!("ShiftRegs initialized.");
-    main_level.update_level(1.0 / 5.0);
 
     /*
      * ADC initialization (faders)
@@ -102,7 +101,6 @@ fn main() -> ! {
     let mut previous_fader_values = [-1000.0f32; 5];
 
     rprintln!("ADC initialized.");
-    main_level.update_level(2.0 / 5.0);
 
     /*
      * PWM Channel initialization for channel level indicators
@@ -129,7 +127,6 @@ fn main() -> ! {
     let mut ch4_level = level::PwmLevel::new(tim1_channels.3.output_to_pe14(pe14));
 
     rprintln!("PWM initialized.");
-    main_level.update_level(3.0 / 5.0);
 
     /*
      * I2C bus initialization
@@ -160,6 +157,11 @@ fn main() -> ! {
     ));
 
     rprintln!("I2C bus initialized.");
+
+    /*
+     * I2C port-expanders for desync LEDs and mute-buttons
+     * ===================================================
+     */
 
     let mut pca9536 = port_expander::Pca9536::new(i2c.acquire_i2c());
     let pca9536_pins = pca9536.split();
@@ -218,7 +220,6 @@ fn main() -> ! {
     }
 
     rprintln!("PCA9536 & PCA9555 initialized.");
-    main_level.update_level(4.0 / 5.0);
 
     /*
      * USB FS
@@ -261,10 +262,12 @@ fn main() -> ! {
     .build();
 
     rprintln!("USB device initialized.");
-    main_level.update_level(5.0 / 5.0);
 
     rprintln!("Ready.");
     rprintln!("");
+
+    // Update main level to full to indicate that we are ready.
+    main_level.update_level(1.0);
 
     let mut queued_message: Option<common::DeviceMessage> = None;
     loop {
