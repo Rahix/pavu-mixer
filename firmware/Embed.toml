@@ -3,3 +3,9 @@ chip = "STM32F303VCTx"
 
 [default.rtt]
 enabled = true
+
+[no-rtt.general]
+chip = "STM32F303VCTx"
+
+[no-rtt.rtt]
+enabled = false
