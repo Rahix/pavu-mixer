@@ -1,3 +1,7 @@
+use rtt_target::rprintln;
+use embedded_hal::digital::v2::OutputPin;
+use core::cell::RefCell;
+
 #[derive(Debug)]
 pub enum Error {
     Usb(usb_device::UsbError),
@@ -100,5 +104,127 @@ impl<'a, B: usb_device::bus::UsbBus> usb_device::class::UsbClass<B> for PavuMixe
         writer.endpoint(&self.read_ep)?;
         writer.endpoint(&self.write_ep)?;
         Ok(())
+    }
+}
+
+pub async fn usb_recv_task<'a, B>(
+    usb_dev: &mut usb_device::device::UsbDevice<'a, B>,
+    usb_class: &RefCell<PavuMixerClass<'a, B>>,
+    mut main_level: crate::level::ShiftRegLevel<impl OutputPin, impl OutputPin, impl OutputPin>,
+
+)
+where
+    B: usb_device::bus::UsbBus
+{
+    loop {
+        if {
+            let mut usb_class = usb_class.borrow_mut();
+            !usb_dev.poll(&mut [&mut *usb_class])
+        } {
+            cassette::yield_now().await;
+            continue;
+        }
+
+        match {
+            let mut usb_class = usb_class.borrow_mut();
+            usb_class.recv_host_message()
+        } {
+            Err(Error::WouldBlock) => (),
+            Err(e) => rprintln!("USB read error: {:?}", e),
+            Ok(msg) => match msg {
+                common::HostMessage::UpdatePeak(common::Channel::Main, v) => {
+                    main_level.update_level(v);
+                }
+                m => rprintln!("Ignored message: {:?}", m),
+                // common::HostMessage::UpdatePeak(ch, v) => match ch {
+                //     common::Channel::Ch1 => ch1_level.update_level(v),
+                //     common::Channel::Ch2 => ch2_level.update_level(v),
+                //     common::Channel::Ch3 => ch3_level.update_level(v),
+                //     common::Channel::Ch4 => ch4_level.update_level(v),
+                //     _ => unreachable!(),
+                // },
+                // common::HostMessage::UpdateChannelState(ch, state) => match ch {
+                //     common::Channel::Ch1 => {
+                //         mute_sync_ch1
+                //             .set_button_led(mute_sync::Led::from_state(state))
+                //             .unwrap();
+                //         if state.is_none() {
+                //             ch1_level.update_level(0.0);
+                //         }
+                //     }
+                //     common::Channel::Ch2 => {
+                //         mute_sync_ch2
+                //             .set_button_led(mute_sync::Led::from_state(state))
+                //             .unwrap();
+                //         if state.is_none() {
+                //             ch2_level.update_level(0.0);
+                //         }
+                //     }
+                //     common::Channel::Ch3 => {
+                //         mute_sync_ch3
+                //             .set_button_led(mute_sync::Led::from_state(state))
+                //             .unwrap();
+                //         if state.is_none() {
+                //             ch3_level.update_level(0.0);
+                //         }
+                //     }
+                //     common::Channel::Ch4 => {
+                //         mute_sync_ch4
+                //             .set_button_led(mute_sync::Led::from_state(state))
+                //             .unwrap();
+                //         if state.is_none() {
+                //             ch4_level.update_level(0.0);
+                //         }
+                //     }
+                //     common::Channel::Main => {
+                //         mute_sync_main
+                //             .set_button_led(mute_sync::Led::from_state(state))
+                //             .unwrap();
+                //     }
+                // },
+            },
+        }
+    }
+}
+
+pub async fn usb_send_task<'a, B>(
+    usb_class: &RefCell<PavuMixerClass<'a, B>>,
+    pending_volume_updates: &RefCell<heapless::LinearMap<common::Channel, f32, 5>>,
+
+)
+where
+    B: usb_device::bus::UsbBus
+{
+    loop {
+        for ch in &[
+            common::Channel::Main,
+            common::Channel::Ch1,
+            common::Channel::Ch2,
+            common::Channel::Ch3,
+            common::Channel::Ch4,
+        ] {
+            'try_send_loop: loop {
+                let mut pending_volume_updates = pending_volume_updates.borrow_mut();
+                if let Some(volume) = pending_volume_updates.get(ch) {
+                    let mut usb_class = usb_class.borrow_mut();
+                    match usb_class.send_device_message(common::DeviceMessage::UpdateVolume(*ch, *volume)) {
+                        Ok(()) => {
+                            pending_volume_updates.remove(ch);
+                            break 'try_send_loop;
+                        },
+                        Err(Error::WouldBlock) => (),
+                        Err(e) => rprintln!("USB write error: {:?}", e),
+                    }
+                } else {
+                    break 'try_send_loop;
+                }
+
+                drop(pending_volume_updates);
+                cassette::yield_now().await;
+            }
+        }
+
+        // yield after all channels were updated (or weren't) because otherwise we'd busy loop here...
+        cassette::yield_now().await;
     }
 }

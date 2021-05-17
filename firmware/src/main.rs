@@ -249,7 +249,7 @@ fn main() -> ! {
     };
     let usb_bus = hal::usb::UsbBus::new(usb);
 
-    let mut usb_class = usb::PavuMixerClass::new(&usb_bus);
+    let mut usb_class = core::cell::RefCell::new(usb::PavuMixerClass::new(&usb_bus));
 
     let mut usb_dev = usb_device::prelude::UsbDeviceBuilder::new(
         &usb_bus,
@@ -263,132 +263,187 @@ fn main() -> ! {
 
     rprintln!("USB device initialized.");
 
+    let pending_volume_updates = core::cell::RefCell::new(
+        heapless::LinearMap::<common::Channel, f32, 5>::new()
+    );
+
     rprintln!("Ready.");
     rprintln!("");
 
     // Update main level to full to indicate that we are ready.
     main_level.update_level(1.0);
 
-    let mut queued_message: Option<common::DeviceMessage> = None;
-    loop {
-        if !usb_dev.poll(&mut [&mut usb_class]) {
-            continue;
-        }
+    let mut usb_recv_task = usb::usb_recv_task(&mut usb_dev, &usb_class, main_level);
+    futures_util::pin_mut!(usb_recv_task);
 
-        match usb_class.recv_host_message() {
-            Err(usb::Error::WouldBlock) => (),
-            Err(e) => rprintln!("USB read error: {:?}", e),
-            Ok(msg) => match msg {
-                common::HostMessage::UpdatePeak(common::Channel::Main, v) => {
-                    main_level.update_level(v);
-                }
-                common::HostMessage::UpdatePeak(ch, v) => match ch {
-                    common::Channel::Ch1 => ch1_level.update_level(v),
-                    common::Channel::Ch2 => ch2_level.update_level(v),
-                    common::Channel::Ch3 => ch3_level.update_level(v),
-                    common::Channel::Ch4 => ch4_level.update_level(v),
-                    _ => unreachable!(),
-                },
-                common::HostMessage::UpdateChannelState(ch, state) => match ch {
-                    common::Channel::Ch1 => {
-                        mute_sync_ch1
-                            .set_button_led(mute_sync::Led::from_state(state))
-                            .unwrap();
-                        if state.is_none() {
-                            ch1_level.update_level(0.0);
-                        }
-                    }
-                    common::Channel::Ch2 => {
-                        mute_sync_ch2
-                            .set_button_led(mute_sync::Led::from_state(state))
-                            .unwrap();
-                        if state.is_none() {
-                            ch2_level.update_level(0.0);
-                        }
-                    }
-                    common::Channel::Ch3 => {
-                        mute_sync_ch3
-                            .set_button_led(mute_sync::Led::from_state(state))
-                            .unwrap();
-                        if state.is_none() {
-                            ch3_level.update_level(0.0);
-                        }
-                    }
-                    common::Channel::Ch4 => {
-                        mute_sync_ch4
-                            .set_button_led(mute_sync::Led::from_state(state))
-                            .unwrap();
-                        if state.is_none() {
-                            ch4_level.update_level(0.0);
-                        }
-                    }
-                    common::Channel::Main => {
-                        mute_sync_main
-                            .set_button_led(mute_sync::Led::from_state(state))
-                            .unwrap();
-                    }
-                },
-            },
-        }
+    let mut usb_send_task = usb::usb_send_task(&usb_class, &pending_volume_updates);
+    futures_util::pin_mut!(usb_send_task);
 
-        if let Some(msg) = queued_message {
-            match usb_class.send_device_message(msg) {
-                Ok(()) => queued_message = None,
-                Err(usb::Error::WouldBlock) => continue,
-                Err(e) => rprintln!("USB write error: {:?}", e),
+    let mut faders_task = async {
+        let enqueue_if_changed = |ch, val: u16, prev: &mut f32| {
+            let scaled_value = ((val as f32).clamp(8.0, 3308.0) - 8.0) / 3300.0;
+            if (*prev - scaled_value).abs() > 0.01 {
+                *prev = scaled_value;
+                &pending_volume_updates.borrow_mut().insert(ch, scaled_value).unwrap();
             }
-        }
+        };
 
-        if pca_int.is_low().unwrap() {
-            if let Some(btn) = if mute_sync_main.read_button_state().unwrap() {
-                Some(common::Channel::Main)
-            } else if mute_sync_ch1.read_button_state().unwrap() {
-                Some(common::Channel::Ch1)
-            } else if mute_sync_ch2.read_button_state().unwrap() {
-                Some(common::Channel::Ch2)
-            } else if mute_sync_ch3.read_button_state().unwrap() {
-                Some(common::Channel::Ch3)
-            } else if mute_sync_ch4.read_button_state().unwrap() {
-                Some(common::Channel::Ch4)
-            } else {
-                None
-            } {
-                queued_message = Some(common::DeviceMessage::ToggleChannelMute(btn));
-                continue;
-            }
-        }
+        let mut previous_values: [f32; 5] = [-1.0; 5];
+        loop {
+            let main_value = adc1.read(&mut fader_main_adc).expect("Error reading ADC.");
+            enqueue_if_changed(common::Channel::Main, main_value, &mut previous_values[0]);
+            cassette::yield_now().await;
 
-        let raw_values: [(common::Channel, u16); 5] = [
-            (
-                common::Channel::Ch1,
-                adc1.read(&mut fader_ch1_adc).expect("Error reading ADC."),
-            ),
-            (
-                common::Channel::Ch2,
-                adc1.read(&mut fader_ch2_adc).expect("Error reading ADC."),
-            ),
-            (
-                common::Channel::Ch3,
-                adc1.read(&mut fader_ch3_adc).expect("Error reading ADC."),
-            ),
-            (
-                common::Channel::Ch4,
-                adc1.read(&mut fader_ch4_adc).expect("Error reading ADC."),
-            ),
-            (
-                common::Channel::Main,
-                adc1.read(&mut fader_main_adc).expect("Error reading ADC."),
-            ),
-        ];
+            let ch1_value = adc1.read(&mut fader_ch1_adc).expect("Error reading ADC.");
+            enqueue_if_changed(common::Channel::Ch1, ch1_value, &mut previous_values[1]);
+            cassette::yield_now().await;
 
-        for ((ch, raw), previous) in raw_values.iter().zip(previous_fader_values.iter_mut()) {
-            let fader = ((*raw as f32).clamp(8.0, 3308.0) - 8.0) / 3300.0;
-            if (*previous - fader).abs() > 0.01 {
-                *previous = fader;
-                queued_message = Some(common::DeviceMessage::UpdateVolume(*ch, fader));
-            }
+            let ch2_value = adc1.read(&mut fader_ch2_adc).expect("Error reading ADC.");
+            enqueue_if_changed(common::Channel::Ch2, ch2_value, &mut previous_values[2]);
+            cassette::yield_now().await;
+
+            let ch3_value = adc1.read(&mut fader_ch3_adc).expect("Error reading ADC.");
+            enqueue_if_changed(common::Channel::Ch3, ch3_value, &mut previous_values[3]);
+            cassette::yield_now().await;
+
+            let ch4_value = adc1.read(&mut fader_ch4_adc).expect("Error reading ADC.");
+            enqueue_if_changed(common::Channel::Ch4, ch4_value, &mut previous_values[4]);
+            cassette::yield_now().await;
         }
-    }
+    };
+    futures_util::pin_mut!(faders_task);
+
+    let mut all_tasks = async {
+        // join!() will poll the tasks in order.  This gives them a kind of "priority":  The first
+        // task will always get polled first after any other task yielded.
+        futures_util::join!(usb_recv_task, usb_send_task, faders_task);
+    };
+    futures_util::pin_mut!(all_tasks);
+
+    let c = cassette::Cassette::new(all_tasks);
+    c.block_on();
+    unreachable!();
+
+    // let mut queued_message: Option<common::DeviceMessage> = None;
+    // loop {
+    //     if !usb_dev.poll(&mut [&mut usb_class]) {
+    //         continue;
+    //     }
+
+    //     match usb_class.recv_host_message() {
+    //         Err(usb::Error::WouldBlock) => (),
+    //         Err(e) => rprintln!("USB read error: {:?}", e),
+    //         Ok(msg) => match msg {
+    //             common::HostMessage::UpdatePeak(common::Channel::Main, v) => {
+    //                 main_level.update_level(v);
+    //             }
+    //             common::HostMessage::UpdatePeak(ch, v) => match ch {
+    //                 common::Channel::Ch1 => ch1_level.update_level(v),
+    //                 common::Channel::Ch2 => ch2_level.update_level(v),
+    //                 common::Channel::Ch3 => ch3_level.update_level(v),
+    //                 common::Channel::Ch4 => ch4_level.update_level(v),
+    //                 _ => unreachable!(),
+    //             },
+    //             common::HostMessage::UpdateChannelState(ch, state) => match ch {
+    //                 common::Channel::Ch1 => {
+    //                     mute_sync_ch1
+    //                         .set_button_led(mute_sync::Led::from_state(state))
+    //                         .unwrap();
+    //                     if state.is_none() {
+    //                         ch1_level.update_level(0.0);
+    //                     }
+    //                 }
+    //                 common::Channel::Ch2 => {
+    //                     mute_sync_ch2
+    //                         .set_button_led(mute_sync::Led::from_state(state))
+    //                         .unwrap();
+    //                     if state.is_none() {
+    //                         ch2_level.update_level(0.0);
+    //                     }
+    //                 }
+    //                 common::Channel::Ch3 => {
+    //                     mute_sync_ch3
+    //                         .set_button_led(mute_sync::Led::from_state(state))
+    //                         .unwrap();
+    //                     if state.is_none() {
+    //                         ch3_level.update_level(0.0);
+    //                     }
+    //                 }
+    //                 common::Channel::Ch4 => {
+    //                     mute_sync_ch4
+    //                         .set_button_led(mute_sync::Led::from_state(state))
+    //                         .unwrap();
+    //                     if state.is_none() {
+    //                         ch4_level.update_level(0.0);
+    //                     }
+    //                 }
+    //                 common::Channel::Main => {
+    //                     mute_sync_main
+    //                         .set_button_led(mute_sync::Led::from_state(state))
+    //                         .unwrap();
+    //                 }
+    //             },
+    //         },
+    //     }
+
+    //     if let Some(msg) = queued_message {
+    //         match usb_class.send_device_message(msg) {
+    //             Ok(()) => queued_message = None,
+    //             Err(usb::Error::WouldBlock) => continue,
+    //             Err(e) => rprintln!("USB write error: {:?}", e),
+    //         }
+    //     }
+
+    //     if pca_int.is_low().unwrap() {
+    //         if let Some(btn) = if mute_sync_main.read_button_state().unwrap() {
+    //             Some(common::Channel::Main)
+    //         } else if mute_sync_ch1.read_button_state().unwrap() {
+    //             Some(common::Channel::Ch1)
+    //         } else if mute_sync_ch2.read_button_state().unwrap() {
+    //             Some(common::Channel::Ch2)
+    //         } else if mute_sync_ch3.read_button_state().unwrap() {
+    //             Some(common::Channel::Ch3)
+    //         } else if mute_sync_ch4.read_button_state().unwrap() {
+    //             Some(common::Channel::Ch4)
+    //         } else {
+    //             None
+    //         } {
+    //             queued_message = Some(common::DeviceMessage::ToggleChannelMute(btn));
+    //             continue;
+    //         }
+    //     }
+
+    //     let raw_values: [(common::Channel, u16); 5] = [
+    //         (
+    //             common::Channel::Ch1,
+    //             adc1.read(&mut fader_ch1_adc).expect("Error reading ADC."),
+    //         ),
+    //         (
+    //             common::Channel::Ch2,
+    //             adc1.read(&mut fader_ch2_adc).expect("Error reading ADC."),
+    //         ),
+    //         (
+    //             common::Channel::Ch3,
+    //             adc1.read(&mut fader_ch3_adc).expect("Error reading ADC."),
+    //         ),
+    //         (
+    //             common::Channel::Ch4,
+    //             adc1.read(&mut fader_ch4_adc).expect("Error reading ADC."),
+    //         ),
+    //         (
+    //             common::Channel::Main,
+    //             adc1.read(&mut fader_main_adc).expect("Error reading ADC."),
+    //         ),
+    //     ];
+
+    //     for ((ch, raw), previous) in raw_values.iter().zip(previous_fader_values.iter_mut()) {
+    //         let fader = ((*raw as f32).clamp(8.0, 3308.0) - 8.0) / 3300.0;
+    //         if (*previous - fader).abs() > 0.01 {
+    //             *previous = fader;
+    //             queued_message = Some(common::DeviceMessage::UpdateVolume(*ch, fader));
+    //         }
+    //     }
+    // }
 }
 
 #[cortex_m_rt::exception]
