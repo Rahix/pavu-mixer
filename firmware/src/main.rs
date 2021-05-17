@@ -263,9 +263,8 @@ fn main() -> ! {
 
     rprintln!("USB device initialized.");
 
-    let pending_volume_updates = core::cell::RefCell::new(
-        heapless::LinearMap::<common::Channel, f32, 5>::new()
-    );
+    let pending_volume_updates =
+        core::cell::RefCell::new(heapless::LinearMap::<common::Channel, f32, 5>::new());
 
     rprintln!("Ready.");
     rprintln!("");
@@ -284,7 +283,10 @@ fn main() -> ! {
             let scaled_value = ((val as f32).clamp(8.0, 3308.0) - 8.0) / 3300.0;
             if (*prev - scaled_value).abs() > 0.01 {
                 *prev = scaled_value;
-                &pending_volume_updates.borrow_mut().insert(ch, scaled_value).unwrap();
+                &pending_volume_updates
+                    .borrow_mut()
+                    .insert(ch, scaled_value)
+                    .unwrap();
             }
         };
 

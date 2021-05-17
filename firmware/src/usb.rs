@@ -1,6 +1,6 @@
-use rtt_target::rprintln;
-use embedded_hal::digital::v2::OutputPin;
 use core::cell::RefCell;
+use embedded_hal::digital::v2::OutputPin;
+use rtt_target::rprintln;
 
 #[derive(Debug)]
 pub enum Error {
@@ -111,10 +111,8 @@ pub async fn usb_recv_task<'a, B>(
     usb_dev: &mut usb_device::device::UsbDevice<'a, B>,
     usb_class: &RefCell<PavuMixerClass<'a, B>>,
     mut main_level: crate::level::ShiftRegLevel<impl OutputPin, impl OutputPin, impl OutputPin>,
-
-)
-where
-    B: usb_device::bus::UsbBus
+) where
+    B: usb_device::bus::UsbBus,
 {
     loop {
         if {
@@ -190,10 +188,8 @@ where
 pub async fn usb_send_task<'a, B>(
     usb_class: &RefCell<PavuMixerClass<'a, B>>,
     pending_volume_updates: &RefCell<heapless::LinearMap<common::Channel, f32, 5>>,
-
-)
-where
-    B: usb_device::bus::UsbBus
+) where
+    B: usb_device::bus::UsbBus,
 {
     loop {
         for ch in &[
@@ -207,11 +203,13 @@ where
                 let mut pending_volume_updates = pending_volume_updates.borrow_mut();
                 if let Some(volume) = pending_volume_updates.get(ch) {
                     let mut usb_class = usb_class.borrow_mut();
-                    match usb_class.send_device_message(common::DeviceMessage::UpdateVolume(*ch, *volume)) {
+                    match usb_class
+                        .send_device_message(common::DeviceMessage::UpdateVolume(*ch, *volume))
+                    {
                         Ok(()) => {
                             pending_volume_updates.remove(ch);
                             break 'try_send_loop;
-                        },
+                        }
                         Err(Error::WouldBlock) => (),
                         Err(e) => rprintln!("USB write error: {:?}", e),
                     }
