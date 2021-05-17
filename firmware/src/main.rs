@@ -4,7 +4,6 @@
 use panic_rtt_target as _;
 use rtt_target::rprintln;
 
-use micromath::F32Ext;
 use stm32f3xx_hal::{self as hal, pac, prelude::*};
 
 mod faders;
@@ -86,7 +85,7 @@ fn main() -> ! {
      * ===========================
      */
 
-    let mut adc1 = hal::adc::Adc::adc1(
+    let adc1 = hal::adc::Adc::adc1(
         dp.ADC1,
         &mut dp.ADC1_2,
         &mut rcc.ahb,
@@ -94,11 +93,11 @@ fn main() -> ! {
         clocks,
     );
 
-    let mut fader_ch1_adc = gpioa.pa0.into_analog(&mut gpioa.moder, &mut gpioa.pupdr);
-    let mut fader_ch2_adc = gpioa.pa1.into_analog(&mut gpioa.moder, &mut gpioa.pupdr);
-    let mut fader_ch3_adc = gpioa.pa2.into_analog(&mut gpioa.moder, &mut gpioa.pupdr);
-    let mut fader_ch4_adc = gpioa.pa3.into_analog(&mut gpioa.moder, &mut gpioa.pupdr);
-    let mut fader_main_adc = gpiof.pf4.into_analog(&mut gpiof.moder, &mut gpiof.pupdr);
+    let fader_ch1_adc = gpioa.pa0.into_analog(&mut gpioa.moder, &mut gpioa.pupdr);
+    let fader_ch2_adc = gpioa.pa1.into_analog(&mut gpioa.moder, &mut gpioa.pupdr);
+    let fader_ch3_adc = gpioa.pa2.into_analog(&mut gpioa.moder, &mut gpioa.pupdr);
+    let fader_ch4_adc = gpioa.pa3.into_analog(&mut gpioa.moder, &mut gpioa.pupdr);
+    let fader_main_adc = gpiof.pf4.into_analog(&mut gpiof.moder, &mut gpiof.pupdr);
 
     rprintln!("ADC initialized.");
 
@@ -121,10 +120,11 @@ fn main() -> ! {
     let pe14 = gpioe
         .pe14
         .into_af2_push_pull(&mut gpioe.moder, &mut gpioe.otyper, &mut gpioe.afrh);
-    let mut ch1_level = level::PwmLevel::new(tim1_channels.0.output_to_pe9(pe9));
-    let mut ch2_level = level::PwmLevel::new(tim1_channels.1.output_to_pe11(pe11));
-    let mut ch3_level = level::PwmLevel::new(tim1_channels.2.output_to_pe13(pe13));
-    let mut ch4_level = level::PwmLevel::new(tim1_channels.3.output_to_pe14(pe14));
+
+    let ch1_level = level::PwmLevel::new(tim1_channels.0.output_to_pe9(pe9));
+    let ch2_level = level::PwmLevel::new(tim1_channels.1.output_to_pe11(pe11));
+    let ch3_level = level::PwmLevel::new(tim1_channels.2.output_to_pe13(pe13));
+    let ch4_level = level::PwmLevel::new(tim1_channels.3.output_to_pe14(pe14));
 
     rprintln!("PWM initialized.");
 
@@ -321,8 +321,7 @@ fn main() -> ! {
     futures_util::pin_mut!(faders_task);
 
     let all_tasks = async {
-        // join!() will poll the tasks in order.  This gives them a kind of "priority":  The first
-        // task will always get polled first after any other task yielded.
+        // join!() all tasks to poll them one after the other indefinitely.
         futures_util::join!(usb_recv_task, usb_send_task, mute_buttons_task, faders_task);
     };
     futures_util::pin_mut!(all_tasks);
@@ -330,127 +329,6 @@ fn main() -> ! {
     let c = cassette::Cassette::new(all_tasks);
     c.block_on();
     unreachable!();
-
-    // let mut queued_message: Option<common::DeviceMessage> = None;
-    // loop {
-    //     if !usb_dev.poll(&mut [&mut usb_class]) {
-    //         continue;
-    //     }
-
-    //     match usb_class.recv_host_message() {
-    //         Err(usb::Error::WouldBlock) => (),
-    //         Err(e) => rprintln!("USB read error: {:?}", e),
-    //         Ok(msg) => match msg {
-    //             common::HostMessage::UpdatePeak(common::Channel::Main, v) => {
-    //                 main_level.update_level(v);
-    //             }
-    //             common::HostMessage::UpdatePeak(ch, v) => match ch {
-    //                 common::Channel::Ch1 => ch1_level.update_level(v),
-    //                 common::Channel::Ch2 => ch2_level.update_level(v),
-    //                 common::Channel::Ch3 => ch3_level.update_level(v),
-    //                 common::Channel::Ch4 => ch4_level.update_level(v),
-    //                 _ => unreachable!(),
-    //             },
-    //             common::HostMessage::UpdateChannelState(ch, state) => match ch {
-    //                 common::Channel::Ch1 => {
-    //                     mute_sync_ch1
-    //                         .set_button_led(mute_sync::Led::from_state(state))
-    //                         .unwrap();
-    //                     if state.is_none() {
-    //                         ch1_level.update_level(0.0);
-    //                     }
-    //                 }
-    //                 common::Channel::Ch2 => {
-    //                     mute_sync_ch2
-    //                         .set_button_led(mute_sync::Led::from_state(state))
-    //                         .unwrap();
-    //                     if state.is_none() {
-    //                         ch2_level.update_level(0.0);
-    //                     }
-    //                 }
-    //                 common::Channel::Ch3 => {
-    //                     mute_sync_ch3
-    //                         .set_button_led(mute_sync::Led::from_state(state))
-    //                         .unwrap();
-    //                     if state.is_none() {
-    //                         ch3_level.update_level(0.0);
-    //                     }
-    //                 }
-    //                 common::Channel::Ch4 => {
-    //                     mute_sync_ch4
-    //                         .set_button_led(mute_sync::Led::from_state(state))
-    //                         .unwrap();
-    //                     if state.is_none() {
-    //                         ch4_level.update_level(0.0);
-    //                     }
-    //                 }
-    //                 common::Channel::Main => {
-    //                     mute_sync_main
-    //                         .set_button_led(mute_sync::Led::from_state(state))
-    //                         .unwrap();
-    //                 }
-    //             },
-    //         },
-    //     }
-
-    //     if let Some(msg) = queued_message {
-    //         match usb_class.send_device_message(msg) {
-    //             Ok(()) => queued_message = None,
-    //             Err(usb::Error::WouldBlock) => continue,
-    //             Err(e) => rprintln!("USB write error: {:?}", e),
-    //         }
-    //     }
-
-    //     if pca_int.is_low().unwrap() {
-    //         if let Some(btn) = if mute_sync_main.read_button_state().unwrap() {
-    //             Some(common::Channel::Main)
-    //         } else if mute_sync_ch1.read_button_state().unwrap() {
-    //             Some(common::Channel::Ch1)
-    //         } else if mute_sync_ch2.read_button_state().unwrap() {
-    //             Some(common::Channel::Ch2)
-    //         } else if mute_sync_ch3.read_button_state().unwrap() {
-    //             Some(common::Channel::Ch3)
-    //         } else if mute_sync_ch4.read_button_state().unwrap() {
-    //             Some(common::Channel::Ch4)
-    //         } else {
-    //             None
-    //         } {
-    //             queued_message = Some(common::DeviceMessage::ToggleChannelMute(btn));
-    //             continue;
-    //         }
-    //     }
-
-    //     let raw_values: [(common::Channel, u16); 5] = [
-    //         (
-    //             common::Channel::Ch1,
-    //             adc1.read(&mut fader_ch1_adc).expect("Error reading ADC."),
-    //         ),
-    //         (
-    //             common::Channel::Ch2,
-    //             adc1.read(&mut fader_ch2_adc).expect("Error reading ADC."),
-    //         ),
-    //         (
-    //             common::Channel::Ch3,
-    //             adc1.read(&mut fader_ch3_adc).expect("Error reading ADC."),
-    //         ),
-    //         (
-    //             common::Channel::Ch4,
-    //             adc1.read(&mut fader_ch4_adc).expect("Error reading ADC."),
-    //         ),
-    //         (
-    //             common::Channel::Main,
-    //             adc1.read(&mut fader_main_adc).expect("Error reading ADC."),
-    //         ),
-    //     ];
-
-    //     for ((ch, raw), previous) in raw_values.iter().zip(previous_fader_values.iter_mut()) {
-    //         let fader = ((*raw as f32).clamp(8.0, 3308.0) - 8.0) / 3300.0;
-    //         if (*previous - fader).abs() > 0.01 {
-    //             *previous = fader;
-    //             queued_message = Some(common::DeviceMessage::UpdateVolume(*ch, fader));
-    //         }
-    //     }
-    // }
 }
 
 #[cortex_m_rt::exception]
