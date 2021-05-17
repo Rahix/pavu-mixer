@@ -5,29 +5,17 @@ pub enum Led {
     Off,
 }
 
-impl Led {
-    pub fn from_state(state: Option<bool>) -> Led {
-        match state {
-            Some(true) => Led::Green,
-            Some(false) => Led::Red,
-            None => Led::Off,
-        }
-    }
-}
-
-pub struct ChannelMuteSync<S, L1, L2, B> {
+pub struct ChannelStatusLeds<S, L1, L2> {
     pub sync_led: S,
     pub button_led1: L1,
     pub button_led2: L2,
-    pub button: B,
 }
 
-impl<S, L1, L2, B, E> ChannelMuteSync<S, L1, L2, B>
+impl<S, L1, L2, E> ChannelStatusLeds<S, L1, L2>
 where
     S: embedded_hal::digital::v2::OutputPin,
     L1: embedded_hal::digital::v2::OutputPin<Error = E>,
     L2: embedded_hal::digital::v2::OutputPin<Error = E>,
-    B: embedded_hal::digital::v2::InputPin,
 {
     pub fn set_sync(&mut self, state: bool) -> Result<(), S::Error> {
         if state {
@@ -35,6 +23,15 @@ where
         } else {
             self.sync_led.set_high()
         }
+    }
+
+    pub fn set_button_led_state(&mut self, state: common::ChannelState) -> Result<(), E> {
+        let led = match state {
+            common::ChannelState::Inactive => Led::Off,
+            common::ChannelState::Running => Led::Green,
+            common::ChannelState::Muted => Led::Red,
+        };
+        self.set_button_led(led)
     }
 
     pub fn set_button_led(&mut self, state: Led) -> Result<(), E> {
@@ -53,9 +50,5 @@ where
             }
         }
         Ok(())
-    }
-
-    pub fn read_button_state(&self) -> Result<bool, B::Error> {
-        self.button.is_low()
     }
 }

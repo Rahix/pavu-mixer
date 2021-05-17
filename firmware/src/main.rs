@@ -8,7 +8,7 @@ use micromath::F32Ext;
 use stm32f3xx_hal::{self as hal, pac, prelude::*};
 
 mod level;
-mod mute_sync;
+mod status_leds;
 mod usb;
 
 #[cortex_m_rt::entry]
@@ -166,52 +166,57 @@ fn main() -> ! {
     let mut pca9555 = port_expander::Pca9555::new(i2c.acquire_i2c(), false, false, false);
     let pca9555_pins = pca9555.split();
 
-    let mut mute_sync_main = mute_sync::ChannelMuteSync {
+    let mut status_leds_main = status_leds::ChannelStatusLeds {
         sync_led: pca9555_pins.io0_0.into_output().unwrap(),
         button_led1: pca9555_pins.io0_2.into_output().unwrap(),
         button_led2: pca9555_pins.io0_3.into_output().unwrap(),
-        button: pca9555_pins.io0_1,
     };
-    let mut mute_sync_ch1 = mute_sync::ChannelMuteSync {
+    let mut status_leds_ch1 = status_leds::ChannelStatusLeds {
         sync_led: pca9536_pins.io0.into_output().unwrap(),
         button_led1: pca9555_pins.io0_5.into_output().unwrap(),
         button_led2: pca9555_pins.io0_6.into_output().unwrap(),
-        button: pca9555_pins.io0_4,
     };
-    let mut mute_sync_ch2 = mute_sync::ChannelMuteSync {
+    let mut status_leds_ch2 = status_leds::ChannelStatusLeds {
         sync_led: pca9536_pins.io1.into_output().unwrap(),
         button_led1: pca9555_pins.io1_0.into_output().unwrap(),
         button_led2: pca9555_pins.io1_1.into_output().unwrap(),
-        button: pca9555_pins.io0_7,
     };
-    let mut mute_sync_ch3 = mute_sync::ChannelMuteSync {
+    let mut status_leds_ch3 = status_leds::ChannelStatusLeds {
         sync_led: pca9536_pins.io2.into_output().unwrap(),
         button_led1: pca9555_pins.io1_3.into_output().unwrap(),
         button_led2: pca9555_pins.io1_4.into_output().unwrap(),
-        button: pca9555_pins.io1_2,
     };
-    let mut mute_sync_ch4 = mute_sync::ChannelMuteSync {
+    let mut status_leds_ch4 = status_leds::ChannelStatusLeds {
         sync_led: pca9536_pins.io3.into_output().unwrap(),
         button_led1: pca9555_pins.io1_6.into_output().unwrap(),
         button_led2: pca9555_pins.io1_7.into_output().unwrap(),
-        button: pca9555_pins.io1_5,
     };
 
+    let mute_main = pca9555_pins.io0_1;
+    let mute_ch1 = pca9555_pins.io0_4;
+    let mute_ch2 = pca9555_pins.io0_7;
+    let mute_ch3 = pca9555_pins.io1_2;
+    let mute_ch4 = pca9555_pins.io1_5;
+
     // Read inputs once to clear interrupt
-    mute_sync_main.read_button_state().unwrap();
-    mute_sync_ch1.read_button_state().unwrap();
-    mute_sync_ch2.read_button_state().unwrap();
-    mute_sync_ch3.read_button_state().unwrap();
-    mute_sync_ch4.read_button_state().unwrap();
+    port_expander::read_multiple([&mute_main, &mute_ch1, &mute_ch2, &mute_ch3, &mute_ch4]).unwrap();
 
     // Set all outputs appropriately
-    mute_sync_main
-        .set_button_led(mute_sync::Led::Green)
+    status_leds_main
+        .set_button_led(status_leds::Led::Green)
         .unwrap();
-    mute_sync_ch1.set_button_led(mute_sync::Led::Off).unwrap();
-    mute_sync_ch2.set_button_led(mute_sync::Led::Off).unwrap();
-    mute_sync_ch3.set_button_led(mute_sync::Led::Off).unwrap();
-    mute_sync_ch4.set_button_led(mute_sync::Led::Off).unwrap();
+    status_leds_ch1
+        .set_button_led(status_leds::Led::Off)
+        .unwrap();
+    status_leds_ch2
+        .set_button_led(status_leds::Led::Off)
+        .unwrap();
+    status_leds_ch3
+        .set_button_led(status_leds::Led::Off)
+        .unwrap();
+    status_leds_ch4
+        .set_button_led(status_leds::Led::Off)
+        .unwrap();
 
     if pca_int.is_low().unwrap() {
         rprintln!("PCA interrupt is asserted when it should not be!");
