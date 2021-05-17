@@ -18,6 +18,12 @@ pub enum ChannelState {
     Muted,
 }
 
+impl ChannelState {
+    pub fn is_active(self) -> bool {
+        self != ChannelState::Inactive
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Clone, Copy)]
 pub enum HostMessage {
     UpdatePeak(Channel, f32),

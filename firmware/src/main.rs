@@ -279,10 +279,15 @@ fn main() -> ! {
         &mut usb_dev,
         &usb_class,
         main_level,
+        status_leds_main,
         ch1_level,
+        status_leds_ch1,
         ch2_level,
+        status_leds_ch2,
         ch3_level,
+        status_leds_ch3,
         ch4_level,
+        status_leds_ch4,
     );
     futures_util::pin_mut!(usb_recv_task);
 

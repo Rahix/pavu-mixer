@@ -1,3 +1,5 @@
+use crate::level;
+use crate::status_leds;
 use core::cell::RefCell;
 use embedded_hal::digital::v2::OutputPin;
 use rtt_target::rprintln;
@@ -107,16 +109,42 @@ impl<'a, B: usb_device::bus::UsbBus> usb_device::class::UsbClass<B> for PavuMixe
     }
 }
 
-pub async fn usb_recv_task<'a, B>(
+pub async fn usb_recv_task<'a, B, E>(
     usb_dev: &mut usb_device::device::UsbDevice<'a, B>,
     usb_class: &RefCell<PavuMixerClass<'a, B>>,
-    mut main_level: crate::level::ShiftRegLevel<impl OutputPin, impl OutputPin, impl OutputPin>,
-    mut ch1_level: crate::level::PwmLevel<impl embedded_hal::PwmPin<Duty = u16>>,
-    mut ch2_level: crate::level::PwmLevel<impl embedded_hal::PwmPin<Duty = u16>>,
-    mut ch3_level: crate::level::PwmLevel<impl embedded_hal::PwmPin<Duty = u16>>,
-    mut ch4_level: crate::level::PwmLevel<impl embedded_hal::PwmPin<Duty = u16>>,
+    mut main_level: level::ShiftRegLevel<impl OutputPin, impl OutputPin, impl OutputPin>,
+    mut main_leds: status_leds::ChannelStatusLeds<
+        impl OutputPin,
+        impl OutputPin<Error = E>,
+        impl OutputPin<Error = E>,
+    >,
+    mut ch1_level: level::PwmLevel<impl embedded_hal::PwmPin<Duty = u16>>,
+    mut ch1_leds: status_leds::ChannelStatusLeds<
+        impl OutputPin,
+        impl OutputPin<Error = E>,
+        impl OutputPin<Error = E>,
+    >,
+    mut ch2_level: level::PwmLevel<impl embedded_hal::PwmPin<Duty = u16>>,
+    mut ch2_leds: status_leds::ChannelStatusLeds<
+        impl OutputPin,
+        impl OutputPin<Error = E>,
+        impl OutputPin<Error = E>,
+    >,
+    mut ch3_level: level::PwmLevel<impl embedded_hal::PwmPin<Duty = u16>>,
+    mut ch3_leds: status_leds::ChannelStatusLeds<
+        impl OutputPin,
+        impl OutputPin<Error = E>,
+        impl OutputPin<Error = E>,
+    >,
+    mut ch4_level: level::PwmLevel<impl embedded_hal::PwmPin<Duty = u16>>,
+    mut ch4_leds: status_leds::ChannelStatusLeds<
+        impl OutputPin,
+        impl OutputPin<Error = E>,
+        impl OutputPin<Error = E>,
+    >,
 ) where
     B: usb_device::bus::UsbBus,
+    E: core::fmt::Debug,
 {
     loop {
         if {
@@ -144,46 +172,35 @@ pub async fn usb_recv_task<'a, B>(
                     common::Channel::Ch4 => ch4_level.update_level(v),
                     _ => unreachable!(),
                 },
-                // common::HostMessage::UpdateChannelState(ch, state) => match ch {
-                //     common::Channel::Ch1 => {
-                //         mute_sync_ch1
-                //             .set_button_led(mute_sync::Led::from_state(state))
-                //             .unwrap();
-                //         if state.is_none() {
-                //             ch1_level.update_level(0.0);
-                //         }
-                //     }
-                //     common::Channel::Ch2 => {
-                //         mute_sync_ch2
-                //             .set_button_led(mute_sync::Led::from_state(state))
-                //             .unwrap();
-                //         if state.is_none() {
-                //             ch2_level.update_level(0.0);
-                //         }
-                //     }
-                //     common::Channel::Ch3 => {
-                //         mute_sync_ch3
-                //             .set_button_led(mute_sync::Led::from_state(state))
-                //             .unwrap();
-                //         if state.is_none() {
-                //             ch3_level.update_level(0.0);
-                //         }
-                //     }
-                //     common::Channel::Ch4 => {
-                //         mute_sync_ch4
-                //             .set_button_led(mute_sync::Led::from_state(state))
-                //             .unwrap();
-                //         if state.is_none() {
-                //             ch4_level.update_level(0.0);
-                //         }
-                //     }
-                //     common::Channel::Main => {
-                //         mute_sync_main
-                //             .set_button_led(mute_sync::Led::from_state(state))
-                //             .unwrap();
-                //     }
-                // },
-                m => rprintln!("Ignored message: {:?}", m),
+                common::HostMessage::UpdateChannelState(ch, state) => match ch {
+                    common::Channel::Main => {
+                        main_leds.set_button_led_state(state).unwrap();
+                    }
+                    common::Channel::Ch1 => {
+                        ch1_leds.set_button_led_state(state).unwrap();
+                        if !state.is_active() {
+                            ch1_level.update_level(0.0);
+                        }
+                    }
+                    common::Channel::Ch2 => {
+                        ch2_leds.set_button_led_state(state).unwrap();
+                        if !state.is_active() {
+                            ch2_level.update_level(0.0);
+                        }
+                    }
+                    common::Channel::Ch3 => {
+                        ch3_leds.set_button_led_state(state).unwrap();
+                        if !state.is_active() {
+                            ch3_level.update_level(0.0);
+                        }
+                    }
+                    common::Channel::Ch4 => {
+                        ch4_leds.set_button_led_state(state).unwrap();
+                        if !state.is_active() {
+                            ch4_level.update_level(0.0);
+                        }
+                    }
+                },
             },
         }
     }
