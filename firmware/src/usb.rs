@@ -209,6 +209,7 @@ pub async fn usb_recv_task<'a, B, E>(
 pub async fn usb_send_task<'a, B>(
     usb_class: &RefCell<PavuMixerClass<'a, B>>,
     pending_volume_updates: &RefCell<heapless::LinearMap<common::Channel, f32, 5>>,
+    pending_presses: &RefCell<heapless::LinearMap<common::Channel, (), 5>>,
 ) where
     B: usb_device::bus::UsbBus,
 {
@@ -220,7 +221,29 @@ pub async fn usb_send_task<'a, B>(
             common::Channel::Ch3,
             common::Channel::Ch4,
         ] {
-            'try_send_loop: loop {
+            'try_send_mute_loop: loop {
+                let mut pending_presses = pending_presses.borrow_mut();
+                if let Some(()) = pending_presses.get(ch) {
+                    let mut usb_class = usb_class.borrow_mut();
+                    match usb_class
+                        .send_device_message(common::DeviceMessage::ToggleChannelMute(*ch))
+                    {
+                        Ok(()) => {
+                            pending_presses.remove(ch);
+                            break 'try_send_mute_loop;
+                        }
+                        Err(Error::WouldBlock) => (),
+                        Err(e) => rprintln!("USB write error: {:?}", e),
+                    }
+                } else {
+                    break 'try_send_mute_loop;
+                }
+
+                drop(pending_presses);
+                cassette::yield_now().await;
+            }
+
+            'try_send_volume_loop: loop {
                 let mut pending_volume_updates = pending_volume_updates.borrow_mut();
                 if let Some(volume) = pending_volume_updates.get(ch) {
                     let mut usb_class = usb_class.borrow_mut();
@@ -229,13 +252,13 @@ pub async fn usb_send_task<'a, B>(
                     {
                         Ok(()) => {
                             pending_volume_updates.remove(ch);
-                            break 'try_send_loop;
+                            break 'try_send_volume_loop;
                         }
                         Err(Error::WouldBlock) => (),
                         Err(e) => rprintln!("USB write error: {:?}", e),
                     }
                 } else {
-                    break 'try_send_loop;
+                    break 'try_send_volume_loop;
                 }
 
                 drop(pending_volume_updates);

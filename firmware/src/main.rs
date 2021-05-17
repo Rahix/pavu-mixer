@@ -9,6 +9,7 @@ use stm32f3xx_hal::{self as hal, pac, prelude::*};
 
 mod faders;
 mod level;
+mod mute;
 mod status_leds;
 mod usb;
 
@@ -269,6 +270,8 @@ fn main() -> ! {
 
     let pending_volume_updates =
         core::cell::RefCell::new(heapless::LinearMap::<common::Channel, f32, 5>::new());
+    let pending_presses =
+        core::cell::RefCell::new(heapless::LinearMap::<common::Channel, (), 5>::new());
 
     rprintln!("Ready.");
     rprintln!("");
@@ -292,8 +295,19 @@ fn main() -> ! {
     );
     futures_util::pin_mut!(usb_recv_task);
 
-    let usb_send_task = usb::usb_send_task(&usb_class, &pending_volume_updates);
+    let usb_send_task = usb::usb_send_task(&usb_class, &pending_volume_updates, &pending_presses);
     futures_util::pin_mut!(usb_send_task);
+
+    let mute_buttons_task = mute::mute_buttons_task(
+        pca_int,
+        mute_main,
+        mute_ch1,
+        mute_ch2,
+        mute_ch3,
+        mute_ch4,
+        &pending_presses,
+    );
+    futures_util::pin_mut!(mute_buttons_task);
 
     let faders_task = faders::faders_task(
         adc1,
@@ -309,7 +323,7 @@ fn main() -> ! {
     let all_tasks = async {
         // join!() will poll the tasks in order.  This gives them a kind of "priority":  The first
         // task will always get polled first after any other task yielded.
-        futures_util::join!(usb_recv_task, usb_send_task, faders_task);
+        futures_util::join!(usb_recv_task, usb_send_task, mute_buttons_task, faders_task);
     };
     futures_util::pin_mut!(all_tasks);
 
