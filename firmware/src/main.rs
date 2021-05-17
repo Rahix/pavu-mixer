@@ -98,8 +98,6 @@ fn main() -> ! {
     let mut fader_ch4_adc = gpioa.pa3.into_analog(&mut gpioa.moder, &mut gpioa.pupdr);
     let mut fader_main_adc = gpiof.pf4.into_analog(&mut gpiof.moder, &mut gpiof.pupdr);
 
-    let mut previous_fader_values = [-1000.0f32; 5];
-
     rprintln!("ADC initialized.");
 
     /*
@@ -249,7 +247,7 @@ fn main() -> ! {
     };
     let usb_bus = hal::usb::UsbBus::new(usb);
 
-    let mut usb_class = core::cell::RefCell::new(usb::PavuMixerClass::new(&usb_bus));
+    let usb_class = core::cell::RefCell::new(usb::PavuMixerClass::new(&usb_bus));
 
     let mut usb_dev = usb_device::prelude::UsbDeviceBuilder::new(
         &usb_bus,
@@ -272,13 +270,21 @@ fn main() -> ! {
     // Update main level to full to indicate that we are ready.
     main_level.update_level(1.0);
 
-    let mut usb_recv_task = usb::usb_recv_task(&mut usb_dev, &usb_class, main_level);
+    let usb_recv_task = usb::usb_recv_task(
+        &mut usb_dev,
+        &usb_class,
+        main_level,
+        ch1_level,
+        ch2_level,
+        ch3_level,
+        ch4_level,
+    );
     futures_util::pin_mut!(usb_recv_task);
 
-    let mut usb_send_task = usb::usb_send_task(&usb_class, &pending_volume_updates);
+    let usb_send_task = usb::usb_send_task(&usb_class, &pending_volume_updates);
     futures_util::pin_mut!(usb_send_task);
 
-    let mut faders_task = async {
+    let faders_task = async {
         let enqueue_if_changed = |ch, val: u16, prev: &mut f32| {
             let scaled_value = ((val as f32).clamp(8.0, 3308.0) - 8.0) / 3300.0;
             if (*prev - scaled_value).abs() > 0.01 {
@@ -315,7 +321,7 @@ fn main() -> ! {
     };
     futures_util::pin_mut!(faders_task);
 
-    let mut all_tasks = async {
+    let all_tasks = async {
         // join!() will poll the tasks in order.  This gives them a kind of "priority":  The first
         // task will always get polled first after any other task yielded.
         futures_util::join!(usb_recv_task, usb_send_task, faders_task);

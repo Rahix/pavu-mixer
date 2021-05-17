@@ -111,6 +111,10 @@ pub async fn usb_recv_task<'a, B>(
     usb_dev: &mut usb_device::device::UsbDevice<'a, B>,
     usb_class: &RefCell<PavuMixerClass<'a, B>>,
     mut main_level: crate::level::ShiftRegLevel<impl OutputPin, impl OutputPin, impl OutputPin>,
+    mut ch1_level: crate::level::PwmLevel<impl embedded_hal::PwmPin<Duty = u16>>,
+    mut ch2_level: crate::level::PwmLevel<impl embedded_hal::PwmPin<Duty = u16>>,
+    mut ch3_level: crate::level::PwmLevel<impl embedded_hal::PwmPin<Duty = u16>>,
+    mut ch4_level: crate::level::PwmLevel<impl embedded_hal::PwmPin<Duty = u16>>,
 ) where
     B: usb_device::bus::UsbBus,
 {
@@ -133,14 +137,13 @@ pub async fn usb_recv_task<'a, B>(
                 common::HostMessage::UpdatePeak(common::Channel::Main, v) => {
                     main_level.update_level(v);
                 }
-                m => rprintln!("Ignored message: {:?}", m),
-                // common::HostMessage::UpdatePeak(ch, v) => match ch {
-                //     common::Channel::Ch1 => ch1_level.update_level(v),
-                //     common::Channel::Ch2 => ch2_level.update_level(v),
-                //     common::Channel::Ch3 => ch3_level.update_level(v),
-                //     common::Channel::Ch4 => ch4_level.update_level(v),
-                //     _ => unreachable!(),
-                // },
+                common::HostMessage::UpdatePeak(ch, v) => match ch {
+                    common::Channel::Ch1 => ch1_level.update_level(v),
+                    common::Channel::Ch2 => ch2_level.update_level(v),
+                    common::Channel::Ch3 => ch3_level.update_level(v),
+                    common::Channel::Ch4 => ch4_level.update_level(v),
+                    _ => unreachable!(),
+                },
                 // common::HostMessage::UpdateChannelState(ch, state) => match ch {
                 //     common::Channel::Ch1 => {
                 //         mute_sync_ch1
@@ -180,6 +183,7 @@ pub async fn usb_recv_task<'a, B>(
                 //             .unwrap();
                 //     }
                 // },
+                m => rprintln!("Ignored message: {:?}", m),
             },
         }
     }
