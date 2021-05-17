@@ -10,10 +10,18 @@ pub enum Channel {
     Main,
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone, Copy)]
+#[repr(u8)]
+pub enum ChannelState {
+    Inactive,
+    Running,
+    Muted,
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Clone, Copy)]
 pub enum HostMessage {
     UpdatePeak(Channel, f32),
-    UpdateChannelState(Channel, Option<bool>),
+    UpdateChannelState(Channel, ChannelState),
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Clone, Copy)]

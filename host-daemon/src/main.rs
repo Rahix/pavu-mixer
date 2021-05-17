@@ -93,9 +93,19 @@ fn inner(pa: &mut pa::PulseInterface) -> anyhow::Result<()> {
                     .iter_mut()
                     {
                         let msg = if ch.try_connect(pa)? {
-                            common::HostMessage::UpdateChannelState(*id, Some(!ch.is_muted()))
+                            common::HostMessage::UpdateChannelState(
+                                *id,
+                                if ch.is_muted() {
+                                    common::ChannelState::Muted
+                                } else {
+                                    common::ChannelState::Running
+                                },
+                            )
                         } else {
-                            common::HostMessage::UpdateChannelState(*id, None)
+                            common::HostMessage::UpdateChannelState(
+                                *id,
+                                common::ChannelState::Inactive,
+                            )
                         };
                         pavu_mixer
                             .send(msg)
@@ -137,7 +147,11 @@ fn inner(pa: &mut pa::PulseInterface) -> anyhow::Result<()> {
                     pavu_mixer
                         .send(common::HostMessage::UpdateChannelState(
                             ch_id,
-                            Some(!new_state),
+                            if new_state {
+                                common::ChannelState::Muted
+                            } else {
+                                common::ChannelState::Running
+                            },
                         ))
                         .with_context(|| format!("failed de/activating channel {:?}", ch_id))?;
                 }
