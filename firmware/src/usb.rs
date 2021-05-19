@@ -89,11 +89,30 @@ impl<'a, B: usb_device::bus::UsbBus> PavuMixerClass<'a, B> {
     /// Send a message to the USB host.
     ///
     /// If a messages is still in-flight, this returns `Error::WouldBlock`.
+    #[allow(dead_code)]
     pub fn send_device_message(&mut self, msg: common::DeviceMessage) -> Result<(), Error> {
         let mut buf = [0x00; 64];
         let bytes = postcard::to_slice(&msg, &mut buf)?;
         self.write_ep.write(bytes)?;
         Ok(())
+    }
+
+    pub async fn send_device_message_async(
+        this: &RefCell<Self>,
+        msg: common::DeviceMessage,
+    ) -> Result<(), Error> {
+        let mut buf = [0x00; 64];
+        let bytes = postcard::to_slice(&msg, &mut buf)?;
+
+        futures_util::future::poll_fn(|_| {
+            let this = this.borrow_mut();
+            match this.write_ep.write(bytes) {
+                Ok(_) => core::task::Poll::Ready(Ok(())),
+                Err(usb_device::UsbError::WouldBlock) => core::task::Poll::Pending,
+                Err(e) => core::task::Poll::Ready(Err(Error::Usb(e))),
+            }
+        })
+        .await
     }
 }
 
@@ -221,48 +240,24 @@ pub async fn usb_send_task<'a, B>(
             common::Channel::Ch3,
             common::Channel::Ch4,
         ] {
-            'try_send_mute_loop: loop {
-                let mut pending_presses = pending_presses.borrow_mut();
-                if let Some(()) = pending_presses.get(ch) {
-                    let mut usb_class = usb_class.borrow_mut();
-                    match usb_class
-                        .send_device_message(common::DeviceMessage::ToggleChannelMute(*ch))
-                    {
-                        Ok(()) => {
-                            pending_presses.remove(ch);
-                            break 'try_send_mute_loop;
-                        }
-                        Err(Error::WouldBlock) => (),
-                        Err(e) => rprintln!("USB write error: {:?}", e),
-                    }
+            let maybe_pressed = pending_presses.borrow().get(ch).cloned();
+            if let Some(()) = maybe_pressed {
+                let msg = common::DeviceMessage::ToggleChannelMute(*ch);
+                if let Err(e) = PavuMixerClass::send_device_message_async(usb_class, msg).await {
+                    rprintln!("USB write error: {:?}", e);
                 } else {
-                    break 'try_send_mute_loop;
+                    pending_presses.borrow_mut().remove(ch);
                 }
-
-                drop(pending_presses);
-                cassette::yield_now().await;
             }
 
-            'try_send_volume_loop: loop {
-                let mut pending_volume_updates = pending_volume_updates.borrow_mut();
-                if let Some(volume) = pending_volume_updates.get(ch) {
-                    let mut usb_class = usb_class.borrow_mut();
-                    match usb_class
-                        .send_device_message(common::DeviceMessage::UpdateVolume(*ch, *volume))
-                    {
-                        Ok(()) => {
-                            pending_volume_updates.remove(ch);
-                            break 'try_send_volume_loop;
-                        }
-                        Err(Error::WouldBlock) => (),
-                        Err(e) => rprintln!("USB write error: {:?}", e),
-                    }
+            let maybe_volume = pending_volume_updates.borrow().get(ch).cloned();
+            if let Some(volume) = maybe_volume {
+                let msg = common::DeviceMessage::UpdateVolume(*ch, volume);
+                if let Err(e) = PavuMixerClass::send_device_message_async(usb_class, msg).await {
+                    rprintln!("USB write error: {:?}", e);
                 } else {
-                    break 'try_send_volume_loop;
+                    pending_volume_updates.borrow_mut().remove(ch);
                 }
-
-                drop(pending_volume_updates);
-                cassette::yield_now().await;
             }
         }
 
