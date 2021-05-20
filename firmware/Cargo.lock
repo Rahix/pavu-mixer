@@ -265,6 +265,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "numtoa"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e521b6adefa0b2c1fa5d2abdf9a5216288686fe6146249215d884c0e5ab320b0"
+
+[[package]]
 name = "panic-rtt-target"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -298,6 +304,7 @@ dependencies = [
  "futures-util",
  "heapless",
  "micromath",
+ "numtoa",
  "panic-rtt-target",
  "pavu-mixer-common",
  "port-expander",

@@ -12,6 +12,17 @@ mod mute;
 mod status_leds;
 mod usb;
 
+fn get_device_serial(buf: &mut [u8; 16]) -> &str {
+    use numtoa::NumToA;
+
+    // SAFETY: Read-only device identifiers
+    let coords = unsafe { core::ptr::read_volatile(0x1FFF_F7AC as *const u32) };
+    let lotwaver = unsafe { core::ptr::read_volatile(0x1FFF_F7B0 as *const u32) };
+
+    let serial = lotwaver.wrapping_add(coords);
+    serial.numtoa_str(16, buf)
+}
+
 #[cortex_m_rt::entry]
 fn main() -> ! {
     rtt_target::rtt_init_print!();
@@ -37,6 +48,11 @@ fn main() -> ! {
     assert!(clocks.usbclk_valid());
 
     rprintln!("Hello World!");
+
+    let mut buf = [0; 16];
+    let serial = get_device_serial(&mut buf);
+    rprintln!("Device Serial: {}", serial);
+    rprintln!("");
 
     /*
      *
@@ -258,12 +274,19 @@ fn main() -> ! {
 
     let mut usb_dev = usb_device::prelude::UsbDeviceBuilder::new(
         &usb_bus,
-        usb_device::prelude::UsbVidPid(0x1209, 0x0001),
+        // random VID:PID.....
+        usb_device::prelude::UsbVidPid(0xde5f, 0x3d20),
     )
+    // General Information
     .manufacturer("Rahix")
     .product("Pavu Mixer")
-    .serial_number("DEADBEEF")
-    .device_class(0x00)
+    .device_release(0x0010)
+    .serial_number(serial)
+    // Power
+    .self_powered(false)
+    .max_power(400)
+    // Device Class
+    .device_class(0xff)
     .build();
 
     rprintln!("USB device initialized.");
