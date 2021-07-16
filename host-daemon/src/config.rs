@@ -1,4 +1,5 @@
 use std::collections;
+use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -21,7 +22,7 @@ pub struct Connection {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Channel {
-    pub property_matches: collections::BTreeMap<String, String>,
+    pub property_matches: Rc<collections::BTreeMap<String, String>>,
 }
 
 impl Default for Config {

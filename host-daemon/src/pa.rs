@@ -286,7 +286,7 @@ impl Channel {
     pub fn new_for_sink_input(
         pa: &mut PulseInterface,
         ch: common::Channel,
-        prop_matches: Option<collections::BTreeMap<String, String>>,
+        prop_matches: Option<Rc<collections::BTreeMap<String, String>>>,
     ) -> anyhow::Result<Self> {
         let mut stream =
             pulse::stream::Stream::new(&mut pa.context, "Peak Detect", &SAMPLE_SPEC, None)
@@ -302,7 +302,7 @@ impl Channel {
         Ok(Self {
             stream,
             ch,
-            prop_matches: prop_matches.map(|p| Rc::new(p)),
+            prop_matches,
             sink: None,
             sink_input: None,
             volume: None,
