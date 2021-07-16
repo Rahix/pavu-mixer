@@ -2,8 +2,7 @@ use anyhow::Context;
 use pulse::callbacks::ListResult;
 use pulse::context;
 use pulse::mainloop::standard as mainloop;
-use std::cell;
-use std::collections;
+use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::mpsc;
 
@@ -14,23 +13,83 @@ const SAMPLE_SPEC: pulse::sample::Spec = pulse::sample::Spec {
     rate: 25,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Event {
-    /// Sinks were added or removed (or default was changed) and we might need to reconnect the
-    /// main channel.
-    UpdateSinks,
-    /// Sink inputs were added or removed and we need to recheck the 4 channels.
-    UpdateSinkInputs,
-    /// New Peak data is available on one of the channels.
-    NewPeaks(common::Channel),
+pub struct SinkInputInfo {
+    index: u32,
+    name: Option<String>,
+    application: Option<String>,
+    connected_to_sink: u32,
+    properties: pulse::proplist::Proplist,
 }
 
+impl SinkInputInfo {
+    fn from_pa(info: &context::introspect::SinkInputInfo) -> Self {
+        Self {
+            index: info.index,
+            name: info.name.as_ref().map(|c| c.to_owned().into_owned()),
+            application: info.proplist.get_str(pulse::proplist::properties::APPLICATION_NAME),
+            connected_to_sink: info.sink,
+            properties: info.proplist.clone(),
+        }
+    }
+}
+
+impl std::fmt::Debug for SinkInputInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut propmap = std::collections::BTreeMap::new();
+        for key in self.properties.iter() {
+            let value = self.properties.get_str(&key).expect("missing property for iterated key");
+            propmap.insert(key, value);
+        }
+        f.debug_struct("SinkInputInfo")
+            .field("index", &self.index)
+            .field("name", &self.name)
+            .field("application", &self.application)
+            .field("connected_to_sink", &self.connected_to_sink)
+            .field("properties", &propmap)
+            .finish()
+    }
+}
+
+#[derive(Debug)]
+pub enum Event {
+    /// After querying the default sink, PulseAudio came back with this default sink.
+    DefaultSink(String),
+    /// A new sink-input showed up and we need to check whether it matches any of our channels - if
+    /// yes, it should be attached.
+    SinkInputAdded(SinkInputInfo),
+    /// A sink-input was removed and we should probably drop it from a potentially connected
+    /// channel as well.
+    SinkInputRemoved(u32),
+    /// New signal peak information is available for this stream (sink / sink-input).
+    NewPeakData(u32),
+    // /// An error occurred asynchronously and we need to abort.
+    // FatalError(anyhow::Error),
+}
+
+enum InternalEvent {
+    /// Sinks were added or removed (or default was changed) and we might need to reconnect the
+    /// main channel.  This will trigger us to query the default sink next, leading to an external
+    /// `DefaultSink` event.
+    SinkUpdateNeeded,
+    /// A new sink-input was detected - we should query its information and tell the application
+    /// about it.
+    SinkInputPending(u32),
+}
+
+/// Interface for interacting with Pulseaudio.
+///
+/// This interface will provide information about connect{ed,ing} streams, stream peak samples, and
+/// allow the mixer to control stream volumes.
+///
+/// It is built upon the Pulseaudio single-threaded "simple" mainloop.
 pub struct PulseInterface {
     mainloop: mainloop::Mainloop,
     pub context: context::Context,
     introspector: context::introspect::Introspector,
-    event_rx: Option<mpsc::Receiver<Event>>,
-    event_tx: mpsc::Sender<Event>,
+    external_rx: Option<mpsc::Receiver<Event>>,
+    external_tx: mpsc::Sender<Event>,
+    internal_rx: mpsc::Receiver<InternalEvent>,
+    internal_tx: mpsc::Sender<InternalEvent>,
 }
 
 impl PulseInterface {
@@ -52,7 +111,6 @@ impl PulseInterface {
             .connect(None, pulse::context::FlagSet::NOFLAGS, None)
             .context("failed connecting context")?;
 
-        // Wait for context
         'wait_for_ctx: loop {
             Self::iterate_mainloop(&mut mainloop, true)?;
             match context.get_state() {
@@ -68,34 +126,47 @@ impl PulseInterface {
 
         let introspector = context.introspect();
 
-        let (event_tx, event_rx) = mpsc::channel();
+        let (external_tx, external_rx) = mpsc::channel();
+        let (internal_tx, internal_rx) = mpsc::channel();
 
-        // register subscription stuff
         context.set_subscribe_callback({
-            let event_tx = event_tx.clone();
-            Some(Box::new(move |facility, op, _idx| {
+            let external_tx = external_tx.clone();
+            let internal_tx = internal_tx.clone();
+            Some(Box::new(move |facility, op, index| {
                 use pulse::context::subscribe::Facility;
                 use pulse::context::subscribe::Operation;
 
-                let op = op.expect("invalid callback params");
-                let facility = facility.expect("invalid callback params");
+                // it would be very odd if PulseAudio gave us invalid enum values
+                let op = op.expect("invalid subscribe callback params");
+                let facility = facility.expect("invalid subscribe callback params");
 
                 match (facility, op) {
-                    (Facility::Sink, Operation::New) => event_tx.send(Event::UpdateSinks),
-                    (Facility::Sink, Operation::Removed) => event_tx.send(Event::UpdateSinks),
-                    (Facility::Sink, Operation::Changed) => Ok(()), // ignore
-                    (Facility::Server, _) => event_tx.send(Event::UpdateSinks),
-                    (Facility::SinkInput, Operation::New) => event_tx.send(Event::UpdateSinkInputs),
-                    (Facility::SinkInput, Operation::Removed) => {
-                        event_tx.send(Event::UpdateSinkInputs)
-                    }
-                    (Facility::SinkInput, Operation::Changed) => Ok(()), // ignore
+                    (Facility::Sink, Operation::New) => internal_tx
+                        .send(InternalEvent::SinkUpdateNeeded)
+                        .expect("event channel error"),
+                    (Facility::Sink, Operation::Removed) => internal_tx
+                        .send(InternalEvent::SinkUpdateNeeded)
+                        .expect("event channel error"),
+                    (Facility::Sink, Operation::Changed) => (), // ignore
+                    (Facility::Server, _) => internal_tx
+                        .send(InternalEvent::SinkUpdateNeeded) // default sink might have changed
+                        .expect("event channel error"),
+                    (Facility::SinkInput, Operation::New) => internal_tx
+                        .send(InternalEvent::SinkInputPending(index))
+                        .expect("event channel error"),
+                    (Facility::SinkInput, Operation::Removed) => external_tx
+                        .send(Event::SinkInputRemoved(index))
+                        .expect("event channel error"),
+                    (Facility::SinkInput, Operation::Changed) => (), // ignore
                     _ => unreachable!("unexpected facility: {:?}", facility),
-                }
-                .expect("channel failure");
+                };
             }))
         });
 
+        // subscribe to interesting events:
+        // - SINK: if the available sinks (= output devices) change
+        // - SINK_INPUT: if the playing audio sources change
+        // - SERVER: if the selected default sink (output device) changes
         {
             use pulse::context::subscribe::InterestMaskSet;
             context.subscribe(
@@ -104,20 +175,47 @@ impl PulseInterface {
             );
         }
 
-        // send events for initial discovery
-        event_tx.send(Event::UpdateSinks).expect("channel failure");
+        // Queue initial events to get the mixer going.  This means triggering an update of the
+        // default sink...
+        internal_tx
+            .send(InternalEvent::SinkUpdateNeeded)
+            .expect("event channel error");
 
-        Ok(PulseInterface {
+        // ...and "adding" all currently existing sink-inputs.
+        let done = Rc::new(Cell::new(Ok(false)));
+        introspector.get_sink_input_info_list({
+            let external_tx = external_tx.clone();
+            let done = done.clone();
+            move |result| match result {
+                ListResult::Item(info) => {
+                    if let Err(e) = external_tx.send(Event::SinkInputAdded(SinkInputInfo::from_pa(info))) {
+                        done.set(Err(e.into()));
+                    }
+                }
+                ListResult::Error => done.set(Err(anyhow::anyhow!("pulseaudio list error"))),
+                ListResult::End => done.set(Ok(true)),
+            }
+        });
+
+        let mut this = Self {
             mainloop,
             context,
             introspector,
-            event_rx: Some(event_rx),
-            event_tx,
-        })
-    }
+            external_rx: Some(external_rx),
+            external_tx,
+            internal_rx,
+            internal_tx,
+        };
 
-    pub fn take_event_receiver(&mut self) -> Option<mpsc::Receiver<Event>> {
-        self.event_rx.take()
+        'add_all_sink_inputs: loop {
+            this.iterate(true)?;
+            // returns `true` once we hit the end of the sink-input list
+            if done.replace(Ok(false))? {
+                break 'add_all_sink_inputs;
+            }
+        }
+
+        Ok(this)
     }
 
     fn iterate_mainloop(mainloop: &mut mainloop::Mainloop, block: bool) -> anyhow::Result<()> {
@@ -128,362 +226,81 @@ impl PulseInterface {
         }
     }
 
+    pub fn take_event_receiver(&mut self) -> Option<mpsc::Receiver<Event>> {
+        self.external_rx.take()
+    }
+
     pub fn iterate(&mut self, block: bool) -> anyhow::Result<()> {
-        Self::iterate_mainloop(&mut self.mainloop, block)
-    }
-
-    fn find_sink_input_by_props(
-        &mut self,
-        props: Rc<collections::BTreeMap<String, String>>,
-    ) -> anyhow::Result<Option<(SinkInputInfo, pulse::volume::ChannelVolumes, bool)>> {
-        let sink_input_info = Rc::new(cell::RefCell::new(None));
-        let done = Rc::new(cell::Cell::new(Ok(false)));
-
-        self.introspector.get_sink_input_info_list({
-            let sink_input_info = sink_input_info.clone();
-            let done = done.clone();
-            move |result| match result {
-                ListResult::Item(info) => {
-                    for (name, value) in props.iter() {
-                        if info.proplist.get_str(name).as_ref() != Some(value) {
-                            // this is not the sink-input we're looking for
-                            return;
-                        }
-                    }
-
-                    // all props matched if we're here!
-                    sink_input_info.replace(Some((
-                        SinkInputInfo {
-                            name: info.name.as_ref().map(|c| c.to_owned().into_owned()),
-                            application: info
-                                .proplist
-                                .get_str(pulse::proplist::properties::APPLICATION_NAME),
-                            index: info.index,
-                            sink: info.sink,
-                        },
-                        info.volume.clone(),
-                        info.mute,
-                    )));
-                }
-                ListResult::Error => done.set(Err(())),
-                ListResult::End => done.set(Ok(true)),
-            }
-        });
-
-        loop {
-            let _ = self.iterate(true)?;
-            match done.get() {
-                Ok(true) => break,
-                Ok(false) => (),
-                Err(_) => anyhow::bail!("failed querying sink-inputs"),
+        Self::iterate_mainloop(&mut self.mainloop, block)?;
+        while let Ok(event) = self.internal_rx.try_recv() {
+            match event {
+                InternalEvent::SinkUpdateNeeded => self.query_default_sink(),
+                InternalEvent::SinkInputPending(index) => self.query_added_sink_input(index),
             }
         }
-
-        Ok(sink_input_info.take())
+        Ok(())
     }
 
-    pub fn find_default_sink(&mut self) -> anyhow::Result<Option<String>> {
-        let default_sink = Rc::new(cell::RefCell::new(None));
-        let done = Rc::new(cell::Cell::new(false));
-
+    /// Query the default sink.  This will trigger an Event::DefaultSink with the result soon.
+    fn query_default_sink(&mut self) {
         self.introspector.get_server_info({
-            let default_sink = default_sink.clone();
-            let done = done.clone();
+            let external_tx = self.external_tx.clone();
             move |info| {
-                default_sink.replace(
-                    info.default_sink_name
-                        .as_ref()
-                        .map(|s| s.clone().into_owned()),
-                );
-                done.set(true);
+                if let Some(default_sink) = &info.default_sink_name {
+                    external_tx.send(Event::DefaultSink(default_sink.clone().into_owned())).expect("event channel error");
+                } else {
+                    log::warn!("PulseAudio does not have a default sink - the main channel is not operational.");
+                }
             }
         });
-
-        loop {
-            self.iterate(true)?;
-            if done.get() {
-                break;
-            }
-        }
-
-        Ok(default_sink.take())
     }
 
-    /// Returns (sink_index, monitor_source, channel_volumes, muted)
-    pub fn get_sink_data(
-        &mut self,
-        sink: &str,
-    ) -> anyhow::Result<(u32, u32, pulse::volume::ChannelVolumes, bool)> {
-        let sink_monitor = Rc::new(cell::RefCell::new(None));
-        let done = Rc::new(cell::Cell::new(Ok(false)));
-
-        self.introspector.get_sink_info_by_name(sink, {
-            let sink_monitor = sink_monitor.clone();
-            let done = done.clone();
+    fn query_added_sink_input(&mut self, index: u32) {
+        self.introspector.get_sink_input_info(index, {
+            let external_tx = self.external_tx.clone();
             move |result| match result {
                 ListResult::Item(info) => {
-                    sink_monitor.replace(Some((
-                        info.index,
-                        info.monitor_source,
-                        info.volume.clone(),
-                        info.mute,
-                    )));
+                    external_tx.send(Event::SinkInputAdded(SinkInputInfo::from_pa(info))).expect("event channel error");
                 }
-                ListResult::End => done.set(Ok(true)),
-                ListResult::Error => done.set(Err(())),
+                ListResult::Error => log::warn!("Error while querying sink-input {} - ignoring.", index),
+                ListResult::End => (),
             }
         });
-
-        loop {
-            self.iterate(true)?;
-            if done
-                .get()
-                .map_err(|_| anyhow::anyhow!("get_sink_info_by_name() list error"))?
-            {
-                break;
-            }
-        }
-
-        Ok(sink_monitor.take().expect("no sink monitor source was set"))
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SinkInputInfo {
-    pub name: Option<String>,
-    pub application: Option<String>,
-    pub index: u32,
-    pub sink: u32,
+impl Drop for PulseInterface {
+    fn drop(&mut self) {
+        // SAFETY: Not doing this causes a segfault /o\
+        self.context.disconnect();
+    }
 }
 
-pub struct Channel {
+#[derive(Debug)]
+pub enum StreamInfo {
+    Sink { index: u32, name: String },
+    SinkInput(SinkInputInfo),
+}
+
+pub struct Stream {
     stream: pulse::stream::Stream,
-    ch: common::Channel,
-    prop_matches: Option<Rc<collections::BTreeMap<String, String>>>,
-    sink: Option<u32>,
-    sink_input: Option<SinkInputInfo>,
+    info: StreamInfo,
     volume: Option<pulse::volume::ChannelVolumes>,
     muted: bool,
 }
 
-impl std::fmt::Debug for Channel {
+impl std::fmt::Debug for Stream {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Channel")
-            .field("ch", &self.ch)
-            .field("sink", &self.sink)
-            .field("sink_input", &self.sink_input)
+        f.debug_struct("Stream")
+            .field("info", &self.info)
+            .field("volume", &self.volume.as_ref().map(|v| v.avg().print()))
+            .field("muted", &self.muted)
             .finish()
     }
 }
 
-impl Channel {
-    /// Create a new channel which is not yet connected
-    pub fn new_for_sink(pa: &mut PulseInterface, ch: common::Channel) -> anyhow::Result<Self> {
-        Self::new_for_sink_input(pa, ch, None)
-    }
-
-    /// Create a new channel which is not yet connected
-    pub fn new_for_sink_input(
-        pa: &mut PulseInterface,
-        ch: common::Channel,
-        prop_matches: Option<Rc<collections::BTreeMap<String, String>>>,
-    ) -> anyhow::Result<Self> {
-        let mut stream =
-            pulse::stream::Stream::new(&mut pa.context, "Peak Detect", &SAMPLE_SPEC, None)
-                .context("failed creating monitoring stream")?;
-
-        stream.set_read_callback({
-            let event_tx = pa.event_tx.clone();
-            Some(Box::new(move |_length| {
-                event_tx.send(Event::NewPeaks(ch)).expect("channel failure");
-            }))
-        });
-
-        Ok(Self {
-            stream,
-            ch,
-            prop_matches,
-            sink: None,
-            sink_input: None,
-            volume: None,
-            muted: true,
-        })
-    }
-
-    pub fn is_for_sink(&self) -> bool {
-        self.prop_matches.is_none()
-    }
-
-    /// Attempt to connect to a sink monitor or sink input
-    pub fn try_connect(&mut self, pa: &mut PulseInterface) -> anyhow::Result<bool> {
-        if self.stream.get_state() != pulse::stream::State::Unconnected {
-            self.stream.set_read_callback(None);
-
-            // ignore disconnection errors
-            let _ = self.stream.disconnect();
-
-            let mut new_stream =
-                pulse::stream::Stream::new(&mut pa.context, "Peak Detect", &SAMPLE_SPEC, None)
-                    .context("failed creating monitoring stream")?;
-
-            new_stream.set_read_callback({
-                let event_tx = pa.event_tx.clone();
-                let ch = self.ch;
-                Some(Box::new(move |_length| {
-                    event_tx.send(Event::NewPeaks(ch)).expect("channel failure");
-                }))
-            });
-
-            self.stream = new_stream;
-        }
-
-        let (monitor_source, sink_input) = if self.is_for_sink() {
-            let sink_name = if let Some(s) = pa.find_default_sink()? {
-                s
-            } else {
-                // no default sink found, not connecting then...
-                return Ok(false);
-            };
-            let (sink_index, monitor_source, volume, muted) = pa.get_sink_data(&sink_name)?;
-            self.sink = Some(sink_index);
-            self.volume = Some(volume);
-            self.muted = muted;
-            (monitor_source, None)
-        } else {
-            let (sink_input_info, volume, muted) = match pa.find_sink_input_by_props(
-                self.prop_matches
-                    .clone()
-                    .expect("no prop matches for sink input"),
-            )? {
-                Some((s, v, m)) => {
-                    log::info!(
-                        "{:?}: \"{}\" from \"{}\"",
-                        self.ch,
-                        s.name.as_deref().unwrap_or("<no name>"),
-                        s.application.as_deref().unwrap_or("<unknown app>")
-                    );
-                    (s, v, m)
-                }
-                // no sink input found for this channel, not connecting then...
-                None => {
-                    log::info!("{:?}: No sink-input found.", self.ch);
-                    return Ok(false);
-                }
-            };
-
-            let (_, monitor_source, _, _) = pa.get_sink_data(&sink_input_info.sink.to_string())?;
-            let sink_input_index = sink_input_info.index;
-            self.sink_input = Some(sink_input_info);
-            self.volume = Some(volume);
-            self.muted = muted;
-            (monitor_source, Some(sink_input_index))
-        };
-
-        if let Some(sink_input) = sink_input {
-            self.stream.set_monitor_stream(sink_input)?;
-        }
-
-        // TODO: do DONT_INHIBIT_AUTO_SUSPEND and DONT_MOVE properly
-        let mut flags =
-            pulse::stream::FlagSet::PEAK_DETECT | pulse::stream::FlagSet::ADJUST_LATENCY;
-
-        if sink_input.is_some() {
-            flags |= pulse::stream::FlagSet::DONT_MOVE;
-        }
-
-        let attrs = pulse::def::BufferAttr {
-            fragsize: std::mem::size_of::<f32>() as u32,
-            maxlength: u32::MAX,
-            ..Default::default()
-        };
-
-        self.stream
-            .connect_record(Some(&monitor_source.to_string()), Some(&attrs), flags)
-            .context("failed connecting monitoring stream")?;
-
-        // TODO: is it really necessary to block until the stream is ready?
-        loop {
-            pa.iterate(true)?;
-            match self.stream.get_state() {
-                pulse::stream::State::Ready => break,
-                pulse::stream::State::Terminated => anyhow::bail!("terminated stream"),
-                pulse::stream::State::Failed => anyhow::bail!("failed stream"),
-                _ => (),
-            }
-        }
-
-        Ok(true)
-    }
-
-    pub fn get_recent_peak(&mut self, pa: &mut PulseInterface) -> anyhow::Result<Option<f32>> {
-        let mut recent_peak: Option<f32> = None;
-        'peek_loop: loop {
-            match self.stream.peek() {
-                Ok(pulse::stream::PeekResult::Empty) => break 'peek_loop,
-                Ok(pulse::stream::PeekResult::Hole(_)) => {
-                    self.stream.discard().context("failed dropping fragments")?;
-                }
-                Ok(pulse::stream::PeekResult::Data(buf)) => {
-                    use std::convert::TryInto;
-                    let buf: [u8; 4] = buf.try_into().context("got fragment of wrong length")?;
-                    let rp = recent_peak.get_or_insert(0.0);
-                    *rp = rp.max(f32::from_ne_bytes(buf));
-                    self.stream.discard().context("failed dropping fragments")?;
-                }
-                Err(_) => {
-                    // on read error, issue a reconfiguration event
-                    if self.is_for_sink() {
-                        pa.event_tx
-                            .send(Event::UpdateSinks)
-                            .expect("channel failure");
-                    } else {
-                        pa.event_tx
-                            .send(Event::UpdateSinkInputs)
-                            .expect("channel failure");
-                    }
-                    return Ok(None);
-                }
-            }
-        }
-        Ok(recent_peak)
-    }
-
-    pub fn set_volume(&mut self, pa: &mut PulseInterface, v: f32) -> anyhow::Result<()> {
-        let volume = match self.volume.as_mut() {
-            Some(v) => v,
-            None => return Ok(()),
-        };
-
-        let pa_volume = pulse::volume::Volume((pulse::volume::Volume::NORMAL.0 as f32 * v) as u32);
-        volume.set(volume.len(), pa_volume);
-
-        if let Some(sink) = self.sink {
-            pa.introspector
-                .set_sink_volume_by_index(sink, &volume, None);
-        }
-        if let Some(sink_input) = self.sink_input.as_ref() {
-            pa.introspector
-                .set_sink_input_volume(sink_input.index, &volume, None);
-        }
-
-        Ok(())
-    }
-
-    pub fn is_muted(&self) -> bool {
-        self.muted
-    }
-
-    pub fn mute(&mut self, pa: &mut PulseInterface, mute: bool) -> anyhow::Result<bool> {
-        if let Some(sink) = self.sink {
-            pa.introspector.set_sink_mute_by_index(sink, mute, None);
-            self.muted = mute;
-        } else if let Some(sink_input) = self.sink_input.as_ref() {
-            pa.introspector
-                .set_sink_input_mute(sink_input.index, mute, None);
-            self.muted = mute;
-        } else {
-            self.muted = true;
-        }
-        Ok(self.muted)
+impl Stream {
+    pub fn new(pa: &mut PulseInterface) -> anyhow::Result<()> {
+        todo!()
     }
 }

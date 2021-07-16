@@ -1,24 +1,11 @@
 use anyhow::Context;
 
+mod channel;
 mod config;
 mod connection;
 mod pa;
 
-fn main() {
-    let mut pa = pa::PulseInterface::init()
-        .context("failed pulseaudio init")
-        .unwrap();
-
-    match inner(&mut pa) {
-        Ok(_) => eprintln!("Success!"),
-        Err(e) => eprintln!("{:?}", e),
-    }
-
-    // TODO: Find out why dropping `pa` causes a SEGFAULT and properly fix this...
-    std::mem::forget(pa);
-}
-
-fn inner(pa: &mut pa::PulseInterface) -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
     env_logger::builder()
         .filter(
             Some("pavu_mixer_host"),
@@ -30,6 +17,45 @@ fn inner(pa: &mut pa::PulseInterface) -> anyhow::Result<()> {
         )
         .init();
 
+    let mut pa = pa::PulseInterface::init().context("failed initializing pulseaudio client")?;
+
+    let config: config::Config =
+        confy::load("pavu-mixer").context("failed loading configuration")?;
+
+    // let mut pavu_mixer =
+    //     connection::PavuMixer::connect(&config.connection).context("failed connecting to mixer")?;
+
+    let mut main = channel::Channel::new(None);
+    let mut channels = [
+        channel::Channel::new(Some(config.channel_1.property_matches.clone())),
+        channel::Channel::new(Some(config.channel_2.property_matches.clone())),
+        channel::Channel::new(Some(config.channel_3.property_matches.clone())),
+        channel::Channel::new(Some(config.channel_4.property_matches.clone())),
+    ];
+
+    let events = pa.take_event_receiver().expect("events channel missing");
+
+    loop {
+        // Handle all pending events from PulseAudio.
+        for event in events.try_iter() {
+            match event {
+                e => log::warn!("Unhandled PulseAudio Event: {:#?}", e),
+            }
+        }
+
+        // Handle pending messages from the mixer device.
+        // if let Some(message) = pavu_mixer.try_recv().context("failed reading from mixer")? {
+        //     match message {
+        //         _ => todo!(),
+        //     }
+        // }
+
+        pa.iterate(true)?;
+    }
+}
+
+#[cfg(f)]
+fn inner(pa: &mut pa::PulseInterface) -> anyhow::Result<()> {
     let config: config::Config = confy::load("pavu-mixer")?;
     let mut pavu_mixer = connection::PavuMixer::connect(&config.connection)?;
 
