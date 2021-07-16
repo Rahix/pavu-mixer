@@ -26,7 +26,9 @@ impl SinkInputInfo {
         Self {
             index: info.index,
             name: info.name.as_ref().map(|c| c.to_owned().into_owned()),
-            application: info.proplist.get_str(pulse::proplist::properties::APPLICATION_NAME),
+            application: info
+                .proplist
+                .get_str(pulse::proplist::properties::APPLICATION_NAME),
             connected_to_sink: info.sink,
             properties: info.proplist.clone(),
         }
@@ -37,7 +39,10 @@ impl std::fmt::Debug for SinkInputInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut propmap = std::collections::BTreeMap::new();
         for key in self.properties.iter() {
-            let value = self.properties.get_str(&key).expect("missing property for iterated key");
+            let value = self
+                .properties
+                .get_str(&key)
+                .expect("missing property for iterated key");
             propmap.insert(key, value);
         }
         f.debug_struct("SinkInputInfo")
@@ -52,8 +57,8 @@ impl std::fmt::Debug for SinkInputInfo {
 
 #[derive(Debug)]
 pub enum Event {
-    /// After querying the default sink, PulseAudio came back with this default sink.
-    DefaultSink(String),
+    /// After querying the default sink, PulseAudio came back with this stream.
+    NewDefaultSink(Stream),
     /// A new sink-input showed up and we need to check whether it matches any of our channels - if
     /// yes, it should be attached.
     SinkInputAdded(SinkInputInfo),
@@ -66,11 +71,17 @@ pub enum Event {
     // FatalError(anyhow::Error),
 }
 
+#[derive(Debug)]
 enum InternalEvent {
     /// Sinks were added or removed (or default was changed) and we might need to reconnect the
     /// main channel.  This will trigger us to query the default sink next, leading to an external
     /// `DefaultSink` event.
     SinkUpdateNeeded,
+    /// PulseAudio reported back the name of the default sink - we can now go and query its
+    /// information.
+    DefaultSinkName(String),
+    /// We got information about the default sink - enough to create a stream for it.
+    SinkData,
     /// A new sink-input was detected - we should query its information and tell the application
     /// about it.
     SinkInputPending(u32),
@@ -90,6 +101,9 @@ pub struct PulseInterface {
     external_tx: mpsc::Sender<Event>,
     internal_rx: mpsc::Receiver<InternalEvent>,
     internal_tx: mpsc::Sender<InternalEvent>,
+
+    /// Name of the current default sink (used to check if it changed).
+    current_default_sink: Option<String>,
 }
 
 impl PulseInterface {
@@ -188,7 +202,9 @@ impl PulseInterface {
             let done = done.clone();
             move |result| match result {
                 ListResult::Item(info) => {
-                    if let Err(e) = external_tx.send(Event::SinkInputAdded(SinkInputInfo::from_pa(info))) {
+                    if let Err(e) =
+                        external_tx.send(Event::SinkInputAdded(SinkInputInfo::from_pa(info)))
+                    {
                         done.set(Err(e.into()));
                     }
                 }
@@ -205,6 +221,8 @@ impl PulseInterface {
             external_tx,
             internal_rx,
             internal_tx,
+
+            current_default_sink: None,
         };
 
         'add_all_sink_inputs: loop {
@@ -235,19 +253,25 @@ impl PulseInterface {
         while let Ok(event) = self.internal_rx.try_recv() {
             match event {
                 InternalEvent::SinkUpdateNeeded => self.query_default_sink(),
+                InternalEvent::DefaultSinkName(name) => if self.current_default_sink.as_ref() != Some(&name) {
+                    // the name differs from the previous one - we need to issue an update
+                    self.query_sink_data(&name);
+                }
                 InternalEvent::SinkInputPending(index) => self.query_added_sink_input(index),
             }
         }
         Ok(())
     }
 
-    /// Query the default sink.  This will trigger an Event::DefaultSink with the result soon.
+    /// Query the default sink.
+    ///
+    /// Triggers [`InternalEvent::DefaultSinkName`] on completion.
     fn query_default_sink(&mut self) {
         self.introspector.get_server_info({
-            let external_tx = self.external_tx.clone();
+            let internal_tx = self.internal_tx.clone();
             move |info| {
                 if let Some(default_sink) = &info.default_sink_name {
-                    external_tx.send(Event::DefaultSink(default_sink.clone().into_owned())).expect("event channel error");
+                    internal_tx.send(InternalEvent::DefaultSinkName(default_sink.clone().into_owned())).expect("event channel error");
                 } else {
                     log::warn!("PulseAudio does not have a default sink - the main channel is not operational.");
                 }
@@ -255,14 +279,42 @@ impl PulseInterface {
         });
     }
 
+    /// Query sink information for a sink.
+    ///
+    /// Triggers [`InternalEvent::SinkData`] on completion.
+    fn query_sink_data(&mut self, sink_name: &str) {
+        self.introspector.get_sink_info_by_name(sink_name, {
+            let internal_tx = self.internal_tx.clone();
+            move |result| match result {
+                ListResult::Item(info) => {
+                    dbg!(
+                        info.index,
+                        info.monitor_source,
+                        info.volume.avg().print(),
+                        info.mute,
+                    );
+                }
+                ListResult::End => (),
+                ListResult::Error => log::warn!("error while querying sink data - ignoring this sink"),
+            }
+        });
+    }
+
+    /// Query a newly added sink-input.
+    ///
+    /// Triggers [`Event::SinkInputAdded`] on completion.
     fn query_added_sink_input(&mut self, index: u32) {
         self.introspector.get_sink_input_info(index, {
             let external_tx = self.external_tx.clone();
             move |result| match result {
                 ListResult::Item(info) => {
-                    external_tx.send(Event::SinkInputAdded(SinkInputInfo::from_pa(info))).expect("event channel error");
+                    external_tx
+                        .send(Event::SinkInputAdded(SinkInputInfo::from_pa(info)))
+                        .expect("event channel error");
                 }
-                ListResult::Error => log::warn!("Error while querying sink-input {} - ignoring.", index),
+                ListResult::Error => {
+                    log::warn!("Error while querying sink-input {} - ignoring.", index)
+                }
                 ListResult::End => (),
             }
         });
