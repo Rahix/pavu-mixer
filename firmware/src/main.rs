@@ -28,7 +28,7 @@ fn main() -> ! {
     rtt_target::rtt_init_print!();
 
     let mut dp = pac::Peripherals::take().unwrap();
-    let _cp = cortex_m::Peripherals::take().unwrap();
+    let cp = cortex_m::Peripherals::take().unwrap();
 
     /*
      * Clocks
@@ -46,6 +46,8 @@ fn main() -> ! {
         .freeze(&mut flash.acr);
 
     assert!(clocks.usbclk_valid());
+
+    let mut delay = stm32f3xx_hal::delay::Delay::new(cp.SYST, clocks);
 
     rprintln!("Hello World!");
 
@@ -68,14 +70,53 @@ fn main() -> ! {
     /*
      * Display
      * =======
-     * TODO: The actual display code...
      */
 
     let mut backlight_gpio = gpiob
         .pb0
         .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
-    // Turn off backlight for now
-    backlight_gpio.set_low().unwrap();
+    backlight_gpio.set_high().unwrap();
+
+    let dc = gpioa
+        .pa8
+        .into_push_pull_output(&mut gpioa.moder, &mut gpioa.otyper);
+    let rst = gpioa
+        .pa9
+        .into_push_pull_output(&mut gpioa.moder, &mut gpioa.otyper);
+    let cs = gpioa
+        .pa4
+        .into_push_pull_output(&mut gpioa.moder, &mut gpioa.otyper);
+
+    let sck = gpioa
+        .pa5
+        .into_af5_push_pull(&mut gpioa.moder, &mut gpioa.otyper, &mut gpioa.afrl);
+    let miso = gpioa
+        .pa6
+        .into_af5_push_pull(&mut gpioa.moder, &mut gpioa.otyper, &mut gpioa.afrl);
+    let mosi = gpioa
+        .pa7
+        .into_af5_push_pull(&mut gpioa.moder, &mut gpioa.otyper, &mut gpioa.afrl);
+
+    let spi = stm32f3xx_hal::spi::Spi::spi1(
+        dp.SPI1,
+        (sck, miso, mosi),
+        waveshare_display::SPI_MODE,
+        16000000.Hz(),
+        clocks,
+        &mut rcc.apb2,
+    );
+
+    let mut display = waveshare_display::WaveshareDisplay::new(spi, cs, dc, rst);
+    display.initialize(&mut delay).unwrap();
+
+    let clearbuf = [0x00; 240 * 2];
+    for row in 0..240 {
+        display
+            .write_fb_partial(0, row, 239, row, &clearbuf)
+            .unwrap();
+    }
+
+    rprintln!("Display initialized.");
 
     /*
      * Main level indicator shift register
@@ -315,6 +356,7 @@ fn main() -> ! {
         status_leds_ch3,
         ch4_level,
         status_leds_ch4,
+        display,
     );
     futures_util::pin_mut!(usb_recv_task);
 

@@ -65,6 +65,7 @@ pub struct PavuMixerClass<'a, B: usb_device::bus::UsbBus> {
     interface: usb_device::bus::InterfaceNumber,
     read_ep: usb_device::endpoint::EndpointOut<'a, B>,
     write_ep: usb_device::endpoint::EndpointIn<'a, B>,
+    bulk_ep: usb_device::endpoint::EndpointOut<'a, B>,
 }
 
 impl<'a, B: usb_device::bus::UsbBus> PavuMixerClass<'a, B> {
@@ -73,6 +74,7 @@ impl<'a, B: usb_device::bus::UsbBus> PavuMixerClass<'a, B> {
             interface: alloc.interface(),
             read_ep: alloc.interrupt(64, 10),   // 10ms
             write_ep: alloc.interrupt(64, 100), // 100ms
+            bulk_ep: alloc.bulk(64),
         }
     }
 
@@ -84,6 +86,13 @@ impl<'a, B: usb_device::bus::UsbBus> PavuMixerClass<'a, B> {
         let bytes_read = self.read_ep.read(&mut buf)?;
         let msg = postcard::from_bytes(&buf[0..bytes_read])?;
         Ok(msg)
+    }
+
+    /// Attempt receiving bulk data from the USB host.
+    ///
+    /// If no message could be received, `Error::WouldBlock` is returned.
+    pub fn recv_bulk(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
+        Ok(self.bulk_ep.read(buf)?)
     }
 
     /// Send a message to the USB host.
@@ -124,6 +133,7 @@ impl<'a, B: usb_device::bus::UsbBus> usb_device::class::UsbClass<B> for PavuMixe
         writer.interface(self.interface, 0xff, 0xc3, 0xc3)?;
         writer.endpoint(&self.read_ep)?;
         writer.endpoint(&self.write_ep)?;
+        writer.endpoint(&self.bulk_ep)?;
         Ok(())
     }
 }
@@ -161,10 +171,24 @@ pub async fn usb_recv_task<'a, B, E>(
         impl OutputPin<Error = E>,
         impl OutputPin<Error = E>,
     >,
+    mut display: waveshare_display::WaveshareDisplay<
+        impl embedded_hal::blocking::spi::Write<u8>,
+        impl OutputPin,
+        impl OutputPin,
+        impl OutputPin,
+    >,
 ) where
     B: usb_device::bus::UsbBus,
     E: core::fmt::Debug,
 {
+    let mut active_icon = None;
+    let mut icon_buf = cortex_m::singleton!(
+        :[u8; common::ICON_SIZE * common::ICON_SIZE * 2]
+            = [0x00; common::ICON_SIZE * common::ICON_SIZE * 2]
+    )
+    .unwrap();
+    let mut icon_cursor = 0;
+
     loop {
         if {
             let mut usb_class = usb_class.borrow_mut();
@@ -172,6 +196,35 @@ pub async fn usb_recv_task<'a, B, E>(
         } {
             cassette::yield_now().await;
             continue;
+        }
+
+        if let Some(ch) = active_icon {
+            let mut usb_class = usb_class.borrow_mut();
+            match usb_class.recv_bulk(&mut icon_buf[icon_cursor..]) {
+                Err(Error::WouldBlock) => (),
+                Err(e) => rprintln!("USB read error: {:?}", e),
+                Ok(len) => {
+                    icon_cursor += len;
+                }
+            }
+
+            if icon_cursor >= icon_buf.len() {
+                let (x, y) = match ch {
+                    common::Channel::Ch1 => (10, 10),
+                    common::Channel::Ch2 => (10, 130),
+                    common::Channel::Ch3 => (130, 10),
+                    common::Channel::Ch4 => (130, 130),
+                    _ => unreachable!(),
+                };
+                display.write_fb_partial(
+                    x,
+                    y,
+                    x + common::ICON_SIZE - 1,
+                    y + common::ICON_SIZE - 1,
+                    &icon_buf[..],
+                );
+                active_icon = None;
+            }
         }
 
         match {
@@ -220,6 +273,10 @@ pub async fn usb_recv_task<'a, B, E>(
                         }
                     }
                 },
+                common::HostMessage::SetIcon(ch) => {
+                    active_icon = Some(ch);
+                    icon_cursor = 0;
+                }
             },
         }
     }
