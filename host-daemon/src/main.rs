@@ -56,11 +56,6 @@ fn main() -> anyhow::Result<()> {
                     // if yes, request a stream for it.
                     for (index, channel) in channels.iter().enumerate() {
                         if channel.match_sink_input(&info) {
-                            log::debug!(
-                                "matched for {:?}: {:#?}",
-                                common::Channel::from_index(index),
-                                info
-                            );
                             pa.request_sink_input_stream(info, common::Channel::from_index(index));
                             break;
                         }

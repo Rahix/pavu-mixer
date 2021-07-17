@@ -82,8 +82,10 @@ impl Channel {
     }
 
     pub fn update_peak(&mut self, index: usize) -> anyhow::Result<f32> {
-        if let Some(peak) = self.attached_streams[index].stream.get_recent_peak()? {
-            self.attached_streams[index].last_peak = peak;
+        match self.attached_streams[index].stream.get_recent_peak() {
+            Ok(Some(peak)) => self.attached_streams[index].last_peak = peak,
+            Err(_) => self.attached_streams[index].last_peak = 0.0,
+            _ => (),
         }
         Ok(self
             .attached_streams
