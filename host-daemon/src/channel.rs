@@ -21,6 +21,7 @@ pub struct Channel {
     /// Property matches for this channel (from the configuration).
     property_matches: Option<Rc<collections::BTreeMap<String, String>>>,
     mute: bool,
+    volume: Option<f32>,
 }
 
 impl Channel {
@@ -31,6 +32,7 @@ impl Channel {
             attached_streams: slab::Slab::new(),
             property_matches,
             mute: false,
+            volume: None,
         }
     }
 
@@ -73,6 +75,10 @@ impl Channel {
             stream.set_mute(pa, self.mute);
         }
 
+        if let Some(volume) = self.volume {
+            stream.set_volume(pa, volume);
+        }
+
         let index = self.attached_streams.insert(StreamData {
             stream,
             last_peak: 0.0,
@@ -102,6 +108,7 @@ impl Channel {
     }
 
     pub fn update_volume(&mut self, pa: &mut crate::pa::PulseInterface, volume: f32) {
+        self.volume = Some(volume);
         for (_, stream_data) in self.attached_streams.iter_mut() {
             stream_data.stream.set_volume(pa, volume);
         }
