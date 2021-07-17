@@ -65,7 +65,6 @@ impl Channel {
     }
 
     pub fn update_peak(&mut self, index: usize) -> anyhow::Result<f32> {
-        // TODO: proper peak management
         if let Some(peak) = self.attached_streams[index].stream.get_recent_peak()? {
             self.attached_streams[index].last_peak = peak;
         }
@@ -75,5 +74,17 @@ impl Channel {
             .map(|s| s.last_peak)
             .max_by(|a, b| a.partial_cmp(b).expect("wrong peak information"))
             .expect("no streams found"))
+    }
+
+    pub fn update_volume(&mut self, pa: &mut crate::pa::PulseInterface, volume: f32) {
+        for stream_data in self.attached_streams.iter_mut() {
+            stream_data.stream.set_volume(pa, volume);
+        }
+    }
+
+    pub fn update_mute(&mut self, pa: &mut crate::pa::PulseInterface, mute: bool) {
+        for stream_data in self.attached_streams.iter_mut() {
+            stream_data.stream.set_mute(pa, mute);
+        }
     }
 }

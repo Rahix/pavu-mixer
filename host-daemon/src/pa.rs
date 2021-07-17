@@ -441,10 +441,10 @@ impl StreamInfo {
         }
     }
 
-    fn muted(&mut self) -> &mut bool {
+    fn muted(&self) -> bool {
         match self {
-            StreamInfo::Sink(s) => &mut s.mute,
-            StreamInfo::SinkInput(s) => &mut s.mute,
+            StreamInfo::Sink(s) => s.mute,
+            StreamInfo::SinkInput(s) => s.mute,
         }
     }
 }
@@ -550,6 +550,38 @@ impl Stream {
             }
         }
         Ok(recent_peak)
+    }
+
+    pub fn set_volume(&mut self, pa: &mut PulseInterface, v: f32) {
+        let pa_volume = pulse::volume::Volume((pulse::volume::Volume::NORMAL.0 as f32 * v) as u32);
+        match &mut self.info {
+            StreamInfo::Sink(SinkInfo { index, volume, .. }) => {
+                volume.set(volume.len(), pa_volume);
+                pa.introspector
+                    .set_sink_volume_by_index(*index, volume, None);
+            }
+            StreamInfo::SinkInput(SinkInputInfo { index, volume, .. }) => {
+                volume.set(volume.len(), pa_volume);
+                pa.introspector.set_sink_input_volume(*index, volume, None);
+            }
+        }
+    }
+
+    pub fn set_mute(&mut self, pa: &mut PulseInterface, new_mute: bool) {
+        match &mut self.info {
+            StreamInfo::Sink(SinkInfo { index, mute, .. }) => {
+                *mute = new_mute;
+                pa.introspector.set_sink_mute_by_index(*index, *mute, None);
+            }
+            StreamInfo::SinkInput(SinkInputInfo { index, mute, .. }) => {
+                *mute = new_mute;
+                pa.introspector.set_sink_input_mute(*index, *mute, None);
+            }
+        }
+    }
+
+    pub fn is_mute(&self) -> bool {
+        self.info.muted()
     }
 }
 
