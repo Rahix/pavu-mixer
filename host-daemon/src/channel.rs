@@ -17,7 +17,7 @@ pub struct Channel {
     /// Current fader position as last reported by the mixer.
     current_volume: f32,
     /// Attached Pulseaudio streams - their volume is controlled by this channel.
-    attached_streams: Vec<StreamData>,
+    attached_streams: slab::Slab<StreamData>,
     /// Property matches for this channel (from the configuration).
     property_matches: Option<Rc<collections::BTreeMap<String, String>>>,
     mute: bool,
@@ -28,7 +28,7 @@ impl Channel {
         Self {
             label: "<inactive>".to_string(),
             current_volume: 0.0,
-            attached_streams: vec![],
+            attached_streams: slab::Slab::new(),
             property_matches,
             mute: false,
         }
@@ -51,7 +51,7 @@ impl Channel {
     /// Detach all currently connected streams.
     pub fn detach_all(&mut self) {
         // TODO: Graceful cleanup, for now let's rely on the streams Drop impl
-        self.attached_streams = vec![];
+        self.attached_streams = slab::Slab::new();
     }
 
     /// Attach a new stream to this channel.
@@ -73,8 +73,7 @@ impl Channel {
             stream.set_mute(pa, self.mute);
         }
 
-        let index = self.attached_streams.len();
-        self.attached_streams.push(StreamData {
+        let index = self.attached_streams.insert(StreamData {
             stream,
             last_peak: 0.0,
         });
@@ -90,20 +89,20 @@ impl Channel {
         Ok(self
             .attached_streams
             .iter()
-            .map(|s| s.last_peak)
+            .map(|(_, s)| s.last_peak)
             .max_by(|a, b| a.partial_cmp(b).expect("wrong peak information"))
             .expect("no streams found"))
     }
 
     pub fn update_volume(&mut self, pa: &mut crate::pa::PulseInterface, volume: f32) {
-        for stream_data in self.attached_streams.iter_mut() {
+        for (_, stream_data) in self.attached_streams.iter_mut() {
             stream_data.stream.set_volume(pa, volume);
         }
     }
 
     pub fn toggle_mute(&mut self, pa: &mut crate::pa::PulseInterface) {
         self.mute = !self.mute;
-        for stream_data in self.attached_streams.iter_mut() {
+        for (_, stream_data) in self.attached_streams.iter_mut() {
             stream_data.stream.set_mute(pa, self.mute);
         }
     }
