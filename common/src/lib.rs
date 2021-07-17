@@ -10,6 +10,30 @@ pub enum Channel {
     Main,
 }
 
+impl Channel {
+    #[inline]
+    pub fn to_index(self) -> usize {
+        match self {
+            Channel::Ch1 => 0,
+            Channel::Ch2 => 1,
+            Channel::Ch3 => 2,
+            Channel::Ch4 => 3,
+            Channel::Main => panic!("called to_index() for Channel::Main"),
+        }
+    }
+
+    #[inline]
+    pub fn from_index(i: usize) -> Self {
+        match i {
+            0 => Channel::Ch1,
+            1 => Channel::Ch2,
+            2 => Channel::Ch3,
+            3 => Channel::Ch4,
+            i => panic!("invalid channel index {}", i),
+        }
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(u8)]
 pub enum ChannelState {
@@ -19,6 +43,7 @@ pub enum ChannelState {
 }
 
 impl ChannelState {
+    #[inline]
     pub fn is_active(self) -> bool {
         self != ChannelState::Inactive
     }
