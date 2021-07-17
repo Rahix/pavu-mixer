@@ -12,3 +12,6 @@ sudo-hack = false
 
 [channel-4.property-matches]
 "application.name" = "Team Fortress 2"
+
+[icon-mappings]
+"Team Fortress 2" = "steam_icon_440"
