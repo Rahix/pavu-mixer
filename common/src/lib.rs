@@ -1,5 +1,7 @@
 #![no_std]
 
+pub const ICON_SIZE: usize = 100;
+
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(u8)]
 pub enum Channel {
@@ -53,6 +55,7 @@ impl ChannelState {
 pub enum HostMessage {
     UpdatePeak(Channel, f32),
     UpdateChannelState(Channel, ChannelState),
+    SetIcon(Channel),
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Clone, Copy)]
