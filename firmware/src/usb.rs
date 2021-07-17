@@ -182,12 +182,34 @@ pub async fn usb_recv_task<'a, B, E>(
     E: core::fmt::Debug,
 {
     let mut active_icon = None;
-    let mut icon_buf = cortex_m::singleton!(
+    let icon_buf = cortex_m::singleton!(
         :[u8; common::ICON_SIZE * common::ICON_SIZE * 2]
             = [0x00; common::ICON_SIZE * common::ICON_SIZE * 2]
     )
     .unwrap();
     let mut icon_cursor = 0;
+
+    let icon_coords = |ch| match ch {
+        common::Channel::Ch1 => (10, 10),
+        common::Channel::Ch2 => (10, 130),
+        common::Channel::Ch3 => (130, 10),
+        common::Channel::Ch4 => (130, 130),
+        _ => unreachable!(),
+    };
+
+    let clear_display = |display: &mut waveshare_display::WaveshareDisplay<_, _, _, _>, ch| {
+        let (x, y) = icon_coords(ch);
+        let clearbuf = [0x00; common::ICON_SIZE * 2];
+        for off in 0..(common::ICON_SIZE as u16) {
+            let _ = display.write_fb_partial(
+                x,
+                y + off,
+                x + common::ICON_SIZE as u16 - 1,
+                y + off,
+                &clearbuf[..],
+            );
+        }
+    };
 
     loop {
         if {
@@ -209,18 +231,12 @@ pub async fn usb_recv_task<'a, B, E>(
             }
 
             if icon_cursor >= icon_buf.len() {
-                let (x, y) = match ch {
-                    common::Channel::Ch1 => (10, 10),
-                    common::Channel::Ch2 => (10, 130),
-                    common::Channel::Ch3 => (130, 10),
-                    common::Channel::Ch4 => (130, 130),
-                    _ => unreachable!(),
-                };
-                display.write_fb_partial(
+                let (x, y) = icon_coords(ch);
+                let _ = display.write_fb_partial(
                     x,
                     y,
-                    x + common::ICON_SIZE - 1,
-                    y + common::ICON_SIZE - 1,
+                    x + common::ICON_SIZE as u16 - 1,
+                    y + common::ICON_SIZE as u16 - 1,
                     &icon_buf[..],
                 );
                 active_icon = None;
@@ -252,24 +268,28 @@ pub async fn usb_recv_task<'a, B, E>(
                         ch1_leds.set_button_led_state(state).unwrap();
                         if !state.is_active() {
                             ch1_level.update_level(0.0);
+                            clear_display(&mut display, ch);
                         }
                     }
                     common::Channel::Ch2 => {
                         ch2_leds.set_button_led_state(state).unwrap();
                         if !state.is_active() {
                             ch2_level.update_level(0.0);
+                            clear_display(&mut display, ch);
                         }
                     }
                     common::Channel::Ch3 => {
                         ch3_leds.set_button_led_state(state).unwrap();
                         if !state.is_active() {
                             ch3_level.update_level(0.0);
+                            clear_display(&mut display, ch);
                         }
                     }
                     common::Channel::Ch4 => {
                         ch4_leds.set_button_led_state(state).unwrap();
                         if !state.is_active() {
                             ch4_level.update_level(0.0);
+                            clear_display(&mut display, ch);
                         }
                     }
                 },
