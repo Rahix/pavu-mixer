@@ -73,7 +73,7 @@ fn main() -> anyhow::Result<()> {
                     let (stream, index, state) = channel.attach_stream(&mut pa, stream);
                     stream.set_connected_channel(ch, index);
                     pavu_mixer.send(common::HostMessage::UpdateChannelState(ch, state))?;
-                    if let Some(icon_name) = stream.get_icon_name() {
+                    if let Some(icon_name) = stream.get_icon_name(&config.icon_mappings) {
                         log::debug!("Icon {:?} for Channel {:?}", icon_name, ch);
                         if let Some(icon_data) = icon::get_icon_data(&icon_name) {
                             pavu_mixer.send(common::HostMessage::SetIcon(ch))?;

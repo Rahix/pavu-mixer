@@ -6,6 +6,9 @@ use std::rc::Rc;
 pub struct Config {
     pub connection: Connection,
 
+    #[serde(default)]
+    pub icon_mappings: collections::BTreeMap<String, String>,
+
     pub channel_1: Channel,
     pub channel_2: Channel,
     pub channel_3: Channel,

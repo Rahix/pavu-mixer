@@ -588,13 +588,25 @@ impl Stream {
         self.info.muted()
     }
 
-    pub fn get_icon_name(&self) -> Option<String> {
+    pub fn get_icon_name(
+        &self,
+        icon_mappings: &std::collections::BTreeMap<String, String>,
+    ) -> Option<String> {
         if let StreamInfo::SinkInput(info) = &self.info {
-            info.properties
+            if let Some(icon) = info
+                .properties
                 .get_str(pulse::proplist::properties::APPLICATION_ICON_NAME)
-        } else {
-            None
+            {
+                return Some(icon);
+            }
+            if let Some(application) = info
+                .properties
+                .get_str(pulse::proplist::properties::APPLICATION_NAME)
+            {
+                return icon_mappings.get(&application).map(Clone::clone);
+            }
         }
+        None
     }
 }
 

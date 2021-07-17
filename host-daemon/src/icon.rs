@@ -20,7 +20,6 @@ pub fn get_icon_data(name: &str) -> Option<Vec<u8>> {
     }
 
     let icon_buffer = icon.read_pixel_bytes()?;
-    dbg!(icon_buffer.len());
 
     let mut target_buffer = vec![];
 
