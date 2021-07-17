@@ -412,7 +412,7 @@ impl PulseInterface {
                         .expect("event channel error");
                 }
                 ListResult::Error => {
-                    log::warn!("Error while querying sink-input {} - ignoring.", index)
+                    log::debug!("Error while querying sink-input {} - ignoring.", index)
                 }
                 ListResult::End => (),
             }
@@ -527,6 +527,13 @@ impl Stream {
 
     pub fn set_connected_channel(&self, ch: common::Channel, index: usize) {
         self.connected_channel.set(Some((ch, index)));
+    }
+
+    pub fn is_for_sink_input(&self, sink_input: u32) -> bool {
+        match &self.info {
+            StreamInfo::Sink(_) => false,
+            StreamInfo::SinkInput(info) => info.index == sink_input,
+        }
     }
 
     pub fn get_recent_peak(&mut self) -> anyhow::Result<Option<f32>> {

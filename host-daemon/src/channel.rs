@@ -80,6 +80,10 @@ impl Channel {
         (&mut self.attached_streams[index].stream, index)
     }
 
+    pub fn try_drop_stream(&mut self, sink_input: u32) {
+        self.attached_streams.retain(|_, stream_data| !stream_data.stream.is_for_sink_input(sink_input));
+    }
+
     pub fn update_peak(&mut self, index: usize) -> anyhow::Result<f32> {
         match self.attached_streams[index].stream.get_recent_peak() {
             Ok(Some(peak)) => self.attached_streams[index].last_peak = peak,

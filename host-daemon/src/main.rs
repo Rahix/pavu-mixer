@@ -66,6 +66,11 @@ fn main() -> anyhow::Result<()> {
                     let (stream, index) = channel.attach_stream(&mut pa, stream);
                     stream.set_connected_channel(ch, index);
                 }
+                pa::Event::SinkInputRemoved(index) => {
+                    for channel in channels.iter_mut() {
+                        channel.try_drop_stream(index);
+                    }
+                }
                 e => log::warn!("Unhandled PulseAudio Event: {:#?}", e),
             }
         }
@@ -81,7 +86,6 @@ fn main() -> anyhow::Result<()> {
                     common::Channel::Main => main.toggle_mute(&mut pa),
                     ch => channels[ch.to_index()].toggle_mute(&mut pa),
                 },
-                m => log::warn!("Unhandled device message: {:?}", m),
             }
         }
 
