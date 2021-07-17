@@ -41,7 +41,7 @@ fn main() -> anyhow::Result<()> {
             match event {
                 pa::Event::NewDefaultSink(stream) => {
                     main.detach_all();
-                    let (stream, index) = main.attach_stream(stream);
+                    let (stream, index) = main.attach_stream(&mut pa, stream);
                     stream.set_connected_channel(common::Channel::Main, index);
                 }
                 pa::Event::NewPeakData(ch, index) => {
@@ -68,7 +68,7 @@ fn main() -> anyhow::Result<()> {
                 }
                 pa::Event::NewSinkInput(ch, stream) => {
                     let channel = &mut channels[ch.to_index()];
-                    let (stream, index) = channel.attach_stream(stream);
+                    let (stream, index) = channel.attach_stream(&mut pa, stream);
                     stream.set_connected_channel(ch, index);
                 }
                 e => log::warn!("Unhandled PulseAudio Event: {:#?}", e),
@@ -81,6 +81,10 @@ fn main() -> anyhow::Result<()> {
                 common::DeviceMessage::UpdateVolume(ch, volume) => match ch {
                     common::Channel::Main => main.update_volume(&mut pa, volume),
                     ch => channels[ch.to_index()].update_volume(&mut pa, volume),
+                },
+                common::DeviceMessage::ToggleChannelMute(ch) => match ch {
+                    common::Channel::Main => main.toggle_mute(&mut pa),
+                    ch => channels[ch.to_index()].toggle_mute(&mut pa),
                 },
                 m => log::warn!("Unhandled device message: {:?}", m),
             }

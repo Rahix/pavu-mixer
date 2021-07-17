@@ -20,6 +20,7 @@ pub struct Channel {
     attached_streams: Vec<StreamData>,
     /// Property matches for this channel (from the configuration).
     property_matches: Option<Rc<collections::BTreeMap<String, String>>>,
+    mute: bool,
 }
 
 impl Channel {
@@ -29,6 +30,7 @@ impl Channel {
             current_volume: 0.0,
             attached_streams: vec![],
             property_matches,
+            mute: false,
         }
     }
 
@@ -55,7 +57,22 @@ impl Channel {
     /// Attach a new stream to this channel.
     ///
     /// Returns a mutable reference and the index where it was inserted
-    pub fn attach_stream(&mut self, stream: crate::pa::Stream) -> (&mut crate::pa::Stream, usize) {
+    pub fn attach_stream(
+        &mut self,
+        pa: &mut crate::pa::PulseInterface,
+        mut stream: crate::pa::Stream,
+    ) -> (&mut crate::pa::Stream, usize) {
+        // if this is the first stream, we need to update our local mute information.
+        // This will be the initial source of truth for the channel until the device updates it.
+        if self.attached_streams.is_empty() {
+            self.mute = stream.is_mute();
+        }
+
+        // bring the stream in line with our knowledge
+        if stream.is_mute() != self.mute {
+            stream.set_mute(pa, self.mute);
+        }
+
         let index = self.attached_streams.len();
         self.attached_streams.push(StreamData {
             stream,
@@ -82,9 +99,10 @@ impl Channel {
         }
     }
 
-    pub fn update_mute(&mut self, pa: &mut crate::pa::PulseInterface, mute: bool) {
+    pub fn toggle_mute(&mut self, pa: &mut crate::pa::PulseInterface) {
+        self.mute = !self.mute;
         for stream_data in self.attached_streams.iter_mut() {
-            stream_data.stream.set_mute(pa, mute);
+            stream_data.stream.set_mute(pa, self.mute);
         }
     }
 }
