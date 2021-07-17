@@ -587,6 +587,15 @@ impl Stream {
     pub fn is_mute(&self) -> bool {
         self.info.muted()
     }
+
+    pub fn get_icon_name(&self) -> Option<String> {
+        if let StreamInfo::SinkInput(info) = &self.info {
+            info.properties
+                .get_str(pulse::proplist::properties::APPLICATION_ICON_NAME)
+        } else {
+            None
+        }
+    }
 }
 
 impl Drop for Stream {

@@ -3,6 +3,7 @@ use anyhow::Context;
 mod channel;
 mod config;
 mod connection;
+mod icon;
 mod pa;
 
 fn main() -> anyhow::Result<()> {
@@ -22,6 +23,8 @@ fn main() -> anyhow::Result<()> {
 
     let mut pavu_mixer =
         connection::PavuMixer::connect(&config.connection).context("failed connecting to mixer")?;
+
+    gtk::init()?;
 
     let mut main = channel::Channel::new(None);
     let mut channels = [
@@ -70,6 +73,13 @@ fn main() -> anyhow::Result<()> {
                     let (stream, index, state) = channel.attach_stream(&mut pa, stream);
                     stream.set_connected_channel(ch, index);
                     pavu_mixer.send(common::HostMessage::UpdateChannelState(ch, state))?;
+                    if let Some(icon_name) = stream.get_icon_name() {
+                        log::debug!("Icon {:?} for Channel {:?}", icon_name, ch);
+                        if let Some(icon_data) = icon::get_icon_data(&icon_name) {
+                            pavu_mixer.send(common::HostMessage::SetIcon(ch))?;
+                            pavu_mixer.send_bulk(&icon_data)?;
+                        }
+                    }
                 }
                 pa::Event::SinkInputRemoved(index) => {
                     for (ch, channel) in channels.iter_mut().enumerate() {

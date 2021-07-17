@@ -17,6 +17,7 @@ struct DeviceInfo {
 struct Endpoints {
     read_address: u8,
     write_address: u8,
+    bulk_address: u8,
 }
 
 impl PavuMixer {
@@ -107,6 +108,20 @@ impl PavuMixer {
             Err(e) => Err(e).context("failed receiving USB message"),
         }
     }
+
+    pub fn send_bulk(&mut self, buf: &[u8]) -> anyhow::Result<()> {
+        log::trace!("sending bulk: {} bytes", buf.len());
+
+        self.dev_handle
+            .write_bulk(
+                self.dev_info.ep.bulk_address,
+                buf,
+                std::time::Duration::from_secs(5),
+            )
+            .context("failed sending USB bulk data")?;
+
+        Ok(())
+    }
 }
 
 impl DeviceInfo {
@@ -148,17 +163,27 @@ impl Endpoints {
     fn from_descriptor(interface_desc: &rusb::InterfaceDescriptor) -> anyhow::Result<Self> {
         let mut found_read_ep = None;
         let mut found_write_ep = None;
+        let mut found_bulk_ep = None;
 
         for endpoint_desc in interface_desc.endpoint_descriptors() {
-            match endpoint_desc.direction() {
-                rusb::Direction::In => found_read_ep = Some(endpoint_desc.address()),
-                rusb::Direction::Out => found_write_ep = Some(endpoint_desc.address()),
+            match (endpoint_desc.transfer_type(), endpoint_desc.direction()) {
+                (rusb::TransferType::Interrupt, rusb::Direction::In) => {
+                    found_read_ep = Some(endpoint_desc.address())
+                }
+                (rusb::TransferType::Interrupt, rusb::Direction::Out) => {
+                    found_write_ep = Some(endpoint_desc.address())
+                }
+                (rusb::TransferType::Bulk, rusb::Direction::Out) => {
+                    found_bulk_ep = Some(endpoint_desc.address())
+                }
+                _ => anyhow::bail!("found unexpected endpoint: {:?}", endpoint_desc),
             }
         }
 
         Ok(Self {
             read_address: found_read_ep.context("missing read endpoint")?,
             write_address: found_write_ep.context("missing write endpoint")?,
+            bulk_address: found_bulk_ep.context("missing bulk endpoint")?,
         })
     }
 }

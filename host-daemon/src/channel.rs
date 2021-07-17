@@ -20,7 +20,9 @@ pub struct Channel {
     attached_streams: slab::Slab<StreamData>,
     /// Property matches for this channel (from the configuration).
     property_matches: Option<Rc<collections::BTreeMap<String, String>>>,
+    /// Whether this channel is currently muted.
     mute: bool,
+    /// The current volume for this channel, as last reported by the mixer.
     volume: Option<f32>,
 }
 
