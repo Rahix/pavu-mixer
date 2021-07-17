@@ -20,7 +20,7 @@ pub struct SinkInputInfo {
     name: Option<String>,
     application: Option<String>,
     connected_sink: u32,
-    properties: pulse::proplist::Proplist,
+    pub properties: pulse::proplist::Proplist,
     volume: pulse::volume::ChannelVolumes,
     mute: bool,
 }
@@ -105,6 +105,8 @@ pub enum Event {
     /// A sink-input was removed and we should probably drop it from a potentially connected
     /// channel as well.
     SinkInputRemoved(u32),
+    /// A new sink-input stream is available for the given channel.
+    NewSinkInput(common::Channel, Stream),
     /// New signal peak information is available for this stream (sink / sink-input).
     NewPeakData(common::Channel, usize),
     // /// An error occurred asynchronously and we need to abort.
@@ -125,6 +127,12 @@ enum InternalEvent {
     /// A new sink-input was detected - we should query its information and tell the application
     /// about it.
     SinkInputPending(u32),
+    /// We collected all relevant information for a new sink-input.
+    RequestSinkInputStream {
+        input_info: SinkInputInfo,
+        for_channel: common::Channel,
+        monitor_source: u32,
+    },
 }
 
 /// Interface for interacting with Pulseaudio.
@@ -298,12 +306,61 @@ impl PulseInterface {
                     }
                 }
                 InternalEvent::SinkData(info) => {
-                    dbg!(info);
+                    // Create a new stream and pass it to the application
+                    let stream = Stream::new_for_sink(self, info)
+                        .context("failed creating monitoring stream for default sink")?;
+                    self.external_tx
+                        .send(Event::NewDefaultSink(stream))
+                        .expect("event channel error");
                 }
                 InternalEvent::SinkInputPending(index) => self.query_added_sink_input(index),
+                InternalEvent::RequestSinkInputStream {
+                    input_info,
+                    for_channel,
+                    monitor_source,
+                } => {
+                    let stream = Stream::new_for_sink_input(self, input_info, monitor_source)?;
+                    self.external_tx
+                        .send(Event::NewSinkInput(for_channel, stream))
+                        .expect("event channel error");
+                }
             }
         }
         Ok(())
+    }
+
+    /// Request a stream for a sink-input.
+    ///
+    /// This will first query the sink-input's sink to get its monitoring source.
+    ///
+    /// Once received, the stream will be pushed as an event.
+    pub fn request_sink_input_stream(
+        &mut self,
+        input_info: SinkInputInfo,
+        for_channel: common::Channel,
+    ) {
+        let connected_sink = input_info.connected_sink;
+        let mut input_info = Some(input_info);
+        self.introspector.get_sink_info_by_index(connected_sink, {
+            let internal_tx = self.internal_tx.clone();
+            move |result| match result {
+                ListResult::Item(info) => {
+                    internal_tx
+                        .send(InternalEvent::RequestSinkInputStream {
+                            input_info: input_info.take().expect(
+                                "callback for request_sink_input_stream() called too often",
+                            ),
+                            for_channel,
+                            monitor_source: info.monitor_source,
+                        })
+                        .expect("event channel error");
+                }
+                ListResult::End => (),
+                ListResult::Error => {
+                    log::warn!("error while querying sink data - ignoring this sink")
+                }
+            }
+        });
     }
 
     /// Query the default sink.
@@ -405,15 +462,20 @@ impl std::fmt::Debug for Stream {
 }
 
 impl Stream {
-    fn new_for_sink(pa: &mut PulseInterface, info: SinkInfo) -> anyhow::Result<()> {
-        todo!()
+    fn new_for_sink(pa: &mut PulseInterface, info: SinkInfo) -> anyhow::Result<Self> {
+        let monitor_source = info.monitoring_source;
+        Self::new(pa, StreamInfo::Sink(info), monitor_source)
     }
 
-    fn new_for_sink_input(pa: &mut PulseInterface, info: SinkInputInfo) -> anyhow::Result<()> {
-        todo!()
+    fn new_for_sink_input(
+        pa: &mut PulseInterface,
+        info: SinkInputInfo,
+        monitor_source: u32,
+    ) -> anyhow::Result<Self> {
+        Self::new(pa, StreamInfo::SinkInput(info), monitor_source)
     }
 
-    fn new(pa: &mut PulseInterface, info: StreamInfo) -> anyhow::Result<Self> {
+    fn new(pa: &mut PulseInterface, info: StreamInfo, monitor_source: u32) -> anyhow::Result<Self> {
         let mut stream =
             pulse::stream::Stream::new(&mut pa.context, "Peak Detect", &SAMPLE_SPEC, None)
                 .context("failed creating monitoring stream")?;
@@ -452,11 +514,6 @@ impl Stream {
             ..Default::default()
         };
 
-        let monitor_source = match &info {
-            StreamInfo::Sink(info) => info.monitoring_source,
-            StreamInfo::SinkInput(info) => todo!(),
-        };
-
         stream
             .connect_record(Some(&monitor_source.to_string()), Some(&attrs), flags)
             .context("failed connecting monitoring stream")?;
@@ -470,6 +527,29 @@ impl Stream {
 
     pub fn set_connected_channel(&self, ch: common::Channel, index: usize) {
         self.connected_channel.set(Some((ch, index)));
+    }
+
+    pub fn get_recent_peak(&mut self) -> anyhow::Result<Option<f32>> {
+        let mut recent_peak: Option<f32> = None;
+        'peek_loop: loop {
+            match self.stream.peek() {
+                Ok(pulse::stream::PeekResult::Empty) => break 'peek_loop,
+                Ok(pulse::stream::PeekResult::Hole(_)) => {
+                    self.stream.discard().context("failed dropping fragments")?;
+                }
+                Ok(pulse::stream::PeekResult::Data(buf)) => {
+                    use std::convert::TryInto;
+                    let buf: [u8; 4] = buf.try_into().context("got fragment of wrong length")?;
+                    let rp = recent_peak.get_or_insert(0.0);
+                    *rp = rp.max(f32::from_ne_bytes(buf));
+                    self.stream.discard().context("failed dropping fragments")?;
+                }
+                Err(_) => {
+                    return Ok(None);
+                }
+            }
+        }
+        Ok(recent_peak)
     }
 }
 
