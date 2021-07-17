@@ -41,8 +41,12 @@ fn main() -> anyhow::Result<()> {
             match event {
                 pa::Event::NewDefaultSink(stream) => {
                     main.detach_all();
-                    let (stream, index) = main.attach_stream(&mut pa, stream);
+                    let (stream, index, state) = main.attach_stream(&mut pa, stream);
                     stream.set_connected_channel(common::Channel::Main, index);
+                    pavu_mixer.send(common::HostMessage::UpdateChannelState(
+                        common::Channel::Main,
+                        state,
+                    ))?;
                 }
                 pa::Event::NewPeakData(ch, index) => {
                     let peak = match ch {
@@ -63,15 +67,19 @@ fn main() -> anyhow::Result<()> {
                 }
                 pa::Event::NewSinkInput(ch, stream) => {
                     let channel = &mut channels[ch.to_index()];
-                    let (stream, index) = channel.attach_stream(&mut pa, stream);
+                    let (stream, index, state) = channel.attach_stream(&mut pa, stream);
                     stream.set_connected_channel(ch, index);
+                    pavu_mixer.send(common::HostMessage::UpdateChannelState(ch, state))?;
                 }
                 pa::Event::SinkInputRemoved(index) => {
-                    for channel in channels.iter_mut() {
-                        channel.try_drop_stream(index);
+                    for (ch, channel) in channels.iter_mut().enumerate() {
+                        let new_state = channel.try_drop_stream(index);
+                        pavu_mixer.send(common::HostMessage::UpdateChannelState(
+                            common::Channel::from_index(ch),
+                            new_state,
+                        ))?;
                     }
                 }
-                e => log::warn!("Unhandled PulseAudio Event: {:#?}", e),
             }
         }
 
@@ -82,10 +90,13 @@ fn main() -> anyhow::Result<()> {
                     common::Channel::Main => main.update_volume(&mut pa, volume),
                     ch => channels[ch.to_index()].update_volume(&mut pa, volume),
                 },
-                common::DeviceMessage::ToggleChannelMute(ch) => match ch {
-                    common::Channel::Main => main.toggle_mute(&mut pa),
-                    ch => channels[ch.to_index()].toggle_mute(&mut pa),
-                },
+                common::DeviceMessage::ToggleChannelMute(ch) => {
+                    let new_state = match ch {
+                        common::Channel::Main => main.toggle_mute(&mut pa),
+                        ch => channels[ch.to_index()].toggle_mute(&mut pa),
+                    };
+                    pavu_mixer.send(common::HostMessage::UpdateChannelState(ch, new_state))?;
+                }
             }
         }
 

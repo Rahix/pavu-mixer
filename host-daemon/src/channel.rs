@@ -61,7 +61,7 @@ impl Channel {
         &mut self,
         pa: &mut crate::pa::PulseInterface,
         mut stream: crate::pa::Stream,
-    ) -> (&mut crate::pa::Stream, usize) {
+    ) -> (&mut crate::pa::Stream, usize, common::ChannelState) {
         // if this is the first stream, we need to update our local mute information.
         // This will be the initial source of truth for the channel until the device updates it.
         if self.attached_streams.is_empty() {
@@ -77,11 +77,14 @@ impl Channel {
             stream,
             last_peak: 0.0,
         });
-        (&mut self.attached_streams[index].stream, index)
+        let state = self.state();
+        (&mut self.attached_streams[index].stream, index, state)
     }
 
-    pub fn try_drop_stream(&mut self, sink_input: u32) {
-        self.attached_streams.retain(|_, stream_data| !stream_data.stream.is_for_sink_input(sink_input));
+    pub fn try_drop_stream(&mut self, sink_input: u32) -> common::ChannelState {
+        self.attached_streams
+            .retain(|_, stream_data| !stream_data.stream.is_for_sink_input(sink_input));
+        self.state()
     }
 
     pub fn update_peak(&mut self, index: usize) -> anyhow::Result<f32> {
@@ -104,10 +107,21 @@ impl Channel {
         }
     }
 
-    pub fn toggle_mute(&mut self, pa: &mut crate::pa::PulseInterface) {
+    pub fn toggle_mute(&mut self, pa: &mut crate::pa::PulseInterface) -> common::ChannelState {
         self.mute = !self.mute;
         for (_, stream_data) in self.attached_streams.iter_mut() {
             stream_data.stream.set_mute(pa, self.mute);
+        }
+        self.state()
+    }
+
+    pub fn state(&self) -> common::ChannelState {
+        if self.attached_streams.is_empty() {
+            common::ChannelState::Inactive
+        } else if self.mute {
+            common::ChannelState::Muted
+        } else {
+            common::ChannelState::Running
         }
     }
 }
