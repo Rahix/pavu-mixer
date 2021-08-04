@@ -38,6 +38,15 @@ fn main() -> anyhow::Result<()> {
 
     let events = pa.take_event_receiver().expect("events channel missing");
 
+    // When we start up, there might still be some messages waiting for us - drop them because we
+    // will request up-to-date ones in the next step.
+    while let Some(message) = pavu_mixer.try_recv().context("failed reading from mixer")? {
+        log::debug!("Dropping stale message from device: {:?}", message);
+    }
+
+    // Force an update during daemon startup so we'll have up-to-date values for all channels.
+    pavu_mixer.send(common::HostMessage::ForceUpdate)?;
+
     loop {
         // Handle all pending events from PulseAudio.
         for event in events.try_iter() {
