@@ -44,6 +44,25 @@ fn main() -> anyhow::Result<()> {
         log::debug!("Dropping stale message from device: {:?}", message);
     }
 
+    // Put all channels into known state.
+    for ch in [
+        common::Channel::Main,
+        common::Channel::Ch1,
+        common::Channel::Ch2,
+        common::Channel::Ch3,
+        common::Channel::Ch4,
+    ] {
+        pavu_mixer
+            .send(common::HostMessage::UpdateChannelState(
+                ch,
+                common::ChannelState::Inactive,
+            ))
+            .context("failed sending message to device")?;
+        pavu_mixer
+            .send(common::HostMessage::UpdatePeak(ch, 0.0))
+            .context("failed sending message to device")?;
+    }
+
     // Force an update during daemon startup so we'll have up-to-date values for all channels.
     pavu_mixer.send(common::HostMessage::ForceUpdate)?;
 
