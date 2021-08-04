@@ -6,6 +6,8 @@ use rtt_target::rprintln;
 
 use stm32f3xx_hal::{self as hal, pac, prelude::*};
 
+use core::cell::RefCell;
+
 mod faders;
 mod level;
 mod mute;
@@ -311,7 +313,7 @@ fn main() -> ! {
     };
     let usb_bus = hal::usb::UsbBus::new(usb);
 
-    let usb_class = core::cell::RefCell::new(usb::PavuMixerClass::new(&usb_bus));
+    let usb_class = RefCell::new(usb::PavuMixerClass::new(&usb_bus));
 
     let mut usb_dev = usb_device::prelude::UsbDeviceBuilder::new(
         &usb_bus,
@@ -333,9 +335,8 @@ fn main() -> ! {
     rprintln!("USB device initialized.");
 
     let pending_volume_updates =
-        core::cell::RefCell::new(heapless::LinearMap::<common::Channel, f32, 5>::new());
-    let pending_presses =
-        core::cell::RefCell::new(heapless::LinearMap::<common::Channel, (), 5>::new());
+        RefCell::new(heapless::LinearMap::<common::Channel, f32, 5>::new());
+    let pending_presses = RefCell::new(heapless::LinearMap::<common::Channel, (), 5>::new());
 
     rprintln!("Ready.");
     rprintln!("");
