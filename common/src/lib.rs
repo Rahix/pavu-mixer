@@ -56,6 +56,7 @@ pub enum HostMessage {
     UpdatePeak(Channel, f32),
     UpdateChannelState(Channel, ChannelState),
     SetIcon(Channel),
+    ForceUpdate,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Clone, Copy)]

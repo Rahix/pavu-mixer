@@ -1,4 +1,4 @@
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
 use stm32f3xx_hal::{self as hal, pac, prelude::*};
 
 use micromath::F32Ext;
@@ -11,6 +11,7 @@ pub async fn faders_task(
     mut fader_ch3_adc: impl embedded_hal::adc::Channel<pac::ADC1, ID = u8>,
     mut fader_ch4_adc: impl embedded_hal::adc::Channel<pac::ADC1, ID = u8>,
     pending_volume_updates: &RefCell<heapless::LinearMap<common::Channel, f32, 5>>,
+    pending_forced_update: &Cell<bool>,
 ) {
     let enqueue_if_changed = |ch, val: u16, prev: &mut f32| {
         let scaled_value = ((val as f32).clamp(8.0, 3308.0) - 8.0) / 3300.0;
@@ -44,5 +45,12 @@ pub async fn faders_task(
         let ch4_value = adc1.read(&mut fader_ch4_adc).expect("Error reading ADC.");
         enqueue_if_changed(common::Channel::Ch4, ch4_value, &mut previous_values[4]);
         cassette::yield_now().await;
+
+        if pending_forced_update.get() {
+            // This will cause an update message to be enqueued for all channels similar to what
+            // happens during startup.
+            previous_values = [-1.0; 5];
+            pending_forced_update.set(false);
+        }
     }
 }

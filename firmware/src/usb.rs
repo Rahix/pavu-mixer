@@ -1,6 +1,6 @@
 use crate::level;
 use crate::status_leds;
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
 use embedded_hal::digital::v2::OutputPin;
 use rtt_target::rprintln;
 
@@ -177,6 +177,7 @@ pub async fn usb_recv_task<'a, B, E>(
         impl OutputPin,
         impl OutputPin,
     >,
+    pending_forced_update: &Cell<bool>,
 ) where
     B: usb_device::bus::UsbBus,
     E: core::fmt::Debug,
@@ -296,6 +297,10 @@ pub async fn usb_recv_task<'a, B, E>(
                 common::HostMessage::SetIcon(ch) => {
                     active_icon = Some(ch);
                     icon_cursor = 0;
+                }
+                common::HostMessage::ForceUpdate => {
+                    rprintln!("Forcing an update.");
+                    pending_forced_update.set(true);
                 }
             },
         }

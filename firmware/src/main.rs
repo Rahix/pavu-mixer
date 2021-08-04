@@ -6,7 +6,7 @@ use rtt_target::rprintln;
 
 use stm32f3xx_hal::{self as hal, pac, prelude::*};
 
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
 
 mod faders;
 mod level;
@@ -337,6 +337,7 @@ fn main() -> ! {
     let pending_volume_updates =
         RefCell::new(heapless::LinearMap::<common::Channel, f32, 5>::new());
     let pending_presses = RefCell::new(heapless::LinearMap::<common::Channel, (), 5>::new());
+    let pending_forced_update = Cell::new(false);
 
     rprintln!("Ready.");
     rprintln!("");
@@ -358,6 +359,7 @@ fn main() -> ! {
         ch4_level,
         status_leds_ch4,
         display,
+        &pending_forced_update,
     );
     futures_util::pin_mut!(usb_recv_task);
 
@@ -383,6 +385,7 @@ fn main() -> ! {
         fader_ch3_adc,
         fader_ch4_adc,
         &pending_volume_updates,
+        &pending_forced_update,
     );
     futures_util::pin_mut!(faders_task);
 
