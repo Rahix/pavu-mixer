@@ -2,6 +2,30 @@ use crate::config;
 use anyhow::Context;
 use std::time;
 
+/// Error to mark that the USB device disconnected.
+///
+/// This "error" is handled specially to allow the application to gracefully shutdown in such a
+/// case.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeviceDisconnectedError;
+
+impl std::fmt::Display for DeviceDisconnectedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Mixer USB device disconnected.")
+    }
+}
+
+impl std::error::Error for DeviceDisconnectedError {}
+
+fn interpret_usb_error(e: rusb::Error) -> anyhow::Error {
+    match e {
+        rusb::Error::NoDevice => anyhow::Error::new(DeviceDisconnectedError),
+        // We assume an I/O error also means the device vanished from the bus...
+        rusb::Error::Io => anyhow::Error::new(DeviceDisconnectedError),
+        e => anyhow::Error::new(e).context("error in USB communication"),
+    }
+}
+
 pub struct PavuMixer {
     dev_info: DeviceInfo,
     dev_handle: rusb::DeviceHandle<rusb::GlobalContext>,
@@ -86,7 +110,7 @@ impl PavuMixer {
                 &msg_bytes,
                 std::time::Duration::from_secs(5),
             )
-            .context("failed sending USB message")?;
+            .map_err(interpret_usb_error)?;
 
         Ok(())
     }
@@ -105,7 +129,7 @@ impl PavuMixer {
                 Ok(Some(msg))
             }
             Err(rusb::Error::Timeout) => Ok(None),
-            Err(e) => Err(e).context("failed receiving USB message"),
+            Err(e) => Err(e).map_err(interpret_usb_error),
         }
     }
 
@@ -118,7 +142,7 @@ impl PavuMixer {
                 buf,
                 std::time::Duration::from_secs(5),
             )
-            .context("failed sending USB bulk data")?;
+            .map_err(interpret_usb_error)?;
 
         Ok(())
     }
