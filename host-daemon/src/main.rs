@@ -122,7 +122,7 @@ fn main() -> anyhow::Result<()> {
         }
 
         // Handle pending messages from the mixer device.
-        if let Some(message) = pavu_mixer.try_recv().context("failed reading from mixer")? {
+        while let Some(message) = pavu_mixer.try_recv().context("failed reading from mixer")? {
             match message {
                 common::DeviceMessage::UpdateVolume(ch, volume) => match ch {
                     common::Channel::Main => main.update_volume(&mut pa, volume),
