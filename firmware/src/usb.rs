@@ -373,7 +373,12 @@ pub async fn usb_send_task<'a, B>(
                 if let Err(e) = PavuMixerClass::send_device_message_async(usb_class, msg).await {
                     rprintln!("USB write error: {:?}", e);
                 } else {
-                    pending_volume_updates.borrow_mut().remove(ch);
+                    let mut pv = pending_volume_updates.borrow_mut();
+                    // Prevent TOCTOU race when a new value was written while we were busy sending
+                    // the previous one.
+                    if *pv.get(ch).unwrap() == volume {
+                        pv.remove(ch);
+                    }
                 }
             }
         }
