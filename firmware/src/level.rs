@@ -18,7 +18,7 @@ where
         let value = (level * 20.5) as u32;
 
         for i in 0..20 {
-            if (19 - i) <= value {
+            if (19 - i) < value {
                 self.data_pin.set_low();
             } else {
                 self.data_pin.set_high();
