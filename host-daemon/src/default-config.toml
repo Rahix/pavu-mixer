@@ -1,17 +1,21 @@
 [connection]
 sudo-hack = false
 
-[channel-1.property-matches]
+[[channel-1.property-matches]]
 "media.role" = "music"
 
-[channel-2.property-matches]
+[[channel-2.property-matches]]
 "application.name" = "Firefox"
 
-[channel-3.property-matches]
+[[channel-3.property-matches]]
 "application.name" = "Chromium"
 
-[channel-4.property-matches]
+[[channel-4.property-matches]]
 "application.name" = "Team Fortress 2"
+
+[[channel-4.property-matches]]
+"media.name" = "Playback Stream"
+"application.name" = "java"
 
 [icon-mappings]
 "Team Fortress 2" = "steam_icon_440"

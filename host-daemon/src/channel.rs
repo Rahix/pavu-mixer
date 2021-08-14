@@ -19,7 +19,7 @@ pub struct Channel {
     /// Attached Pulseaudio streams - their volume is controlled by this channel.
     attached_streams: slab::Slab<StreamData>,
     /// Property matches for this channel (from the configuration).
-    property_matches: Option<Rc<collections::BTreeMap<String, String>>>,
+    property_matches: Option<Rc<Vec<collections::BTreeMap<String, String>>>>,
     /// Whether this channel is currently muted.
     mute: bool,
     /// The current volume for this channel, as last reported by the mixer.
@@ -27,7 +27,7 @@ pub struct Channel {
 }
 
 impl Channel {
-    pub fn new(property_matches: Option<Rc<collections::BTreeMap<String, String>>>) -> Self {
+    pub fn new(property_matches: Option<Rc<Vec<collections::BTreeMap<String, String>>>>) -> Self {
         Self {
             label: "<inactive>".to_string(),
             current_volume: 0.0,
@@ -40,16 +40,17 @@ impl Channel {
 
     pub fn match_sink_input(&self, info: &crate::pa::SinkInputInfo) -> bool {
         if let Some(property_matches) = &self.property_matches {
-            for (name, value) in property_matches.iter() {
-                if info.properties.get_str(name).as_ref() != Some(value) {
-                    return false;
+            'sets_loop: for matches_set in property_matches.iter() {
+                for (name, value) in matches_set.iter() {
+                    if info.properties.get_str(name).as_ref() != Some(value) {
+                        continue 'sets_loop;
+                    }
                 }
+                // only reached after all properties in some match set have been matched
+                return true;
             }
-            // only reached after all properties matched
-            true
-        } else {
-            false
         }
+        return false;
     }
 
     /// Detach all currently connected streams.

@@ -25,7 +25,7 @@ pub struct Connection {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Channel {
-    pub property_matches: Rc<collections::BTreeMap<String, String>>,
+    pub property_matches: Rc<Vec<collections::BTreeMap<String, String>>>,
 }
 
 impl Default for Config {
