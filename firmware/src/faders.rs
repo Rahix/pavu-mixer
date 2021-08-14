@@ -15,7 +15,11 @@ pub async fn faders_task(
 ) {
     let enqueue_if_changed = |ch, val: u16, prev: &mut f32| {
         let scaled_value = ((val as f32).clamp(8.0, 3308.0) - 8.0) / 3300.0;
-        if (*prev - scaled_value).abs() > 0.01 {
+        // Send only deviations larger than 1% or if the value reached MIN/MAX.
+        if (*prev - scaled_value).abs() > 0.01
+            || (scaled_value == 1.0 && *prev != 1.0)
+            || (scaled_value == 0.0 && *prev != 0.0)
+        {
             *prev = scaled_value;
             &pending_volume_updates
                 .borrow_mut()
