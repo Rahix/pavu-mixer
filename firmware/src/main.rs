@@ -74,7 +74,7 @@ fn main() -> ! {
      * =======
      */
 
-    let mut backlight_gpio = gpiob
+    let backlight_gpio = gpiob
         .pb0
         .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
 
@@ -109,13 +109,6 @@ fn main() -> ! {
 
     let mut display = waveshare_display::WaveshareDisplay::new(spi, cs, dc, rst);
     display.initialize(&mut delay).unwrap();
-
-    let clearbuf = [0x00; 240 * 2];
-    for row in 0..240 {
-        display
-            .write_fb_partial(0, row, 239, row, &clearbuf)
-            .unwrap();
-    }
 
     rprintln!("Display initialized.");
 

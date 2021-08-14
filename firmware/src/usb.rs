@@ -241,6 +241,7 @@ pub async fn usb_recv_task<'a, B, E>(
                 let _ = ch4_leds.set_sync(false);
                 let _ = main_leds.set_sync(false);
             } else {
+                display.clear_screen().unwrap();
                 let _ = backlight.set_high();
             }
         }
