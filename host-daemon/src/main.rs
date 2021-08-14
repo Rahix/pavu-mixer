@@ -29,7 +29,10 @@ fn main() -> anyhow::Result<()> {
         Err(e) => e,
     };
 
-    if error.downcast_ref::<connection::DeviceDisconnectedError>().is_some() {
+    if error
+        .downcast_ref::<connection::DeviceDisconnectedError>()
+        .is_some()
+    {
         log::info!("PavuMixer disconnected, shutting down.");
         Ok(())
     } else {
@@ -144,7 +147,7 @@ fn run(config: config::Config, mut pavu_mixer: connection::PavuMixer) -> anyhow:
                         common::Channel::Main => main.update_volume(&mut pa, volume),
                         ch => channels[ch.to_index()].update_volume(&mut pa, volume),
                     }
-                },
+                }
                 common::DeviceMessage::ToggleChannelMute(ch) => {
                     let new_state = match ch {
                         common::Channel::Main => main.toggle_mute(&mut pa),
