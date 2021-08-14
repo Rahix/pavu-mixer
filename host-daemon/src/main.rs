@@ -21,9 +21,23 @@ fn main() -> anyhow::Result<()> {
     let config: config::Config =
         confy::load("pavu-mixer").context("failed loading configuration")?;
 
-    let mut pavu_mixer =
+    let pavu_mixer =
         connection::PavuMixer::connect(&config.connection).context("failed connecting to mixer")?;
 
+    let error = match run(config, pavu_mixer) {
+        Ok(()) => return Ok(()),
+        Err(e) => e,
+    };
+
+    if error.downcast_ref::<connection::DeviceDisconnectedError>().is_some() {
+        log::info!("PavuMixer disconnected, shutting down.");
+        Ok(())
+    } else {
+        Err(error)
+    }
+}
+
+fn run(config: config::Config, mut pavu_mixer: connection::PavuMixer) -> anyhow::Result<()> {
     gtk::init()?;
 
     let mut main = channel::Channel::new(None);
