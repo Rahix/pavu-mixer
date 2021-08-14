@@ -138,9 +138,12 @@ fn run(config: config::Config, mut pavu_mixer: connection::PavuMixer) -> anyhow:
         // Handle pending messages from the mixer device.
         while let Some(message) = pavu_mixer.try_recv().context("failed reading from mixer")? {
             match message {
-                common::DeviceMessage::UpdateVolume(ch, volume) => match ch {
-                    common::Channel::Main => main.update_volume(&mut pa, volume),
-                    ch => channels[ch.to_index()].update_volume(&mut pa, volume),
+                common::DeviceMessage::UpdateVolume(ch, volume) => {
+                    log::debug!("Set channel {:?} to {:6.2} %", ch, volume * 100.0);
+                    match ch {
+                        common::Channel::Main => main.update_volume(&mut pa, volume),
+                        ch => channels[ch.to_index()].update_volume(&mut pa, volume),
+                    }
                 },
                 common::DeviceMessage::ToggleChannelMute(ch) => {
                     let new_state = match ch {
