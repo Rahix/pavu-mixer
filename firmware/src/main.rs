@@ -8,6 +8,7 @@ use stm32f3xx_hal::{self as hal, pac, prelude::*};
 
 use core::cell::{Cell, RefCell};
 
+mod display;
 mod faders;
 mod level;
 mod mute;
@@ -74,7 +75,7 @@ fn main() -> ! {
      * =======
      */
 
-    let backlight_gpio = gpiob
+    let backlight = gpiob
         .pb0
         .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
 
@@ -109,6 +110,8 @@ fn main() -> ! {
 
     let mut display = waveshare_display::WaveshareDisplay::new(spi, cs, dc, rst);
     display.initialize(&mut delay).unwrap();
+
+    let gui = crate::display::Gui::new(display, backlight);
 
     rprintln!("Display initialized.");
 
@@ -350,8 +353,7 @@ fn main() -> ! {
         status_leds_ch3,
         ch4_level,
         status_leds_ch4,
-        display,
-        backlight_gpio,
+        gui,
         &pending_forced_update,
     );
     futures_util::pin_mut!(usb_recv_task);

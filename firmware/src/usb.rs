@@ -1,3 +1,4 @@
+use crate::display;
 use crate::level;
 use crate::status_leds;
 use core::cell::{Cell, RefCell};
@@ -171,48 +172,18 @@ pub async fn usb_recv_task<'a, B, E>(
         impl OutputPin<Error = E>,
         impl OutputPin<Error = E>,
     >,
-    mut display: waveshare_display::WaveshareDisplay<
+    mut gui: display::Gui<
         impl embedded_hal::blocking::spi::Write<u8>,
         impl OutputPin,
         impl OutputPin,
         impl OutputPin,
+        impl OutputPin,
     >,
-    mut backlight: impl OutputPin,
     pending_forced_update: &Cell<bool>,
 ) where
     B: usb_device::bus::UsbBus,
     E: core::fmt::Debug,
 {
-    let mut active_icon = None;
-    let icon_buf = cortex_m::singleton!(
-        :[u8; common::ICON_SIZE * common::ICON_SIZE * 2]
-            = [0x00; common::ICON_SIZE * common::ICON_SIZE * 2]
-    )
-    .unwrap();
-    let mut icon_cursor = 0;
-
-    let icon_coords = |ch| match ch {
-        common::Channel::Ch1 => (10, 10),
-        common::Channel::Ch2 => (10, 130),
-        common::Channel::Ch3 => (130, 10),
-        common::Channel::Ch4 => (130, 130),
-        _ => unreachable!(),
-    };
-
-    let clear_display = |display: &mut waveshare_display::WaveshareDisplay<_, _, _, _>, ch| {
-        let (x, y) = icon_coords(ch);
-        let clearbuf = [0x00; common::ICON_SIZE * 2];
-        for off in 0..(common::ICON_SIZE as u16) {
-            let _ = display.write_fb_partial(
-                x,
-                y + off,
-                x + common::ICON_SIZE as u16 - 1,
-                y + off,
-                &clearbuf[..],
-            );
-        }
-    };
-
     let mut suspend = true;
     loop {
         let new_suspend = match usb_dev.state() {
@@ -224,7 +195,7 @@ pub async fn usb_recv_task<'a, B, E>(
         if suspend != new_suspend {
             // If we're going into suspend, turn off all UI
             if new_suspend {
-                let _ = backlight.set_low();
+                gui.suspend();
                 let _ = ch1_level.update_level(0.0);
                 let _ = ch2_level.update_level(0.0);
                 let _ = ch3_level.update_level(0.0);
@@ -241,8 +212,7 @@ pub async fn usb_recv_task<'a, B, E>(
                 let _ = ch4_leds.set_sync(false);
                 let _ = main_leds.set_sync(false);
             } else {
-                display.clear_screen().unwrap();
-                let _ = backlight.set_high();
+                gui.resume();
             }
         }
 
@@ -256,28 +226,15 @@ pub async fn usb_recv_task<'a, B, E>(
             continue;
         }
 
-        if let Some(ch) = active_icon {
-            let mut usb_class = usb_class.borrow_mut();
-            match usb_class.recv_bulk(&mut icon_buf[icon_cursor..]) {
-                Err(Error::WouldBlock) => (),
-                Err(e) => rprintln!("USB read error: {:?}", e),
-                Ok(len) => {
-                    icon_cursor += len;
-                }
+        // If we're currently expecting icon data, try polling for it.
+        gui.try_push_icon_data_if_active(|buf| match usb_class.borrow_mut().recv_bulk(buf) {
+            Err(Error::WouldBlock) => 0,
+            Ok(len) => len,
+            Err(e) => {
+                rprintln!("USB read error: {:?}", e);
+                0
             }
-
-            if icon_cursor >= icon_buf.len() {
-                let (x, y) = icon_coords(ch);
-                let _ = display.write_fb_partial(
-                    x,
-                    y,
-                    x + common::ICON_SIZE as u16 - 1,
-                    y + common::ICON_SIZE as u16 - 1,
-                    &icon_buf[..],
-                );
-                active_icon = None;
-            }
-        }
+        });
 
         match {
             let mut usb_class = usb_class.borrow_mut();
@@ -304,34 +261,33 @@ pub async fn usb_recv_task<'a, B, E>(
                         ch1_leds.set_button_led_state(state).unwrap();
                         if !state.is_active() {
                             ch1_level.update_level(0.0);
-                            clear_display(&mut display, ch);
+                            gui.clear_icon(ch);
                         }
                     }
                     common::Channel::Ch2 => {
                         ch2_leds.set_button_led_state(state).unwrap();
                         if !state.is_active() {
                             ch2_level.update_level(0.0);
-                            clear_display(&mut display, ch);
+                            gui.clear_icon(ch);
                         }
                     }
                     common::Channel::Ch3 => {
                         ch3_leds.set_button_led_state(state).unwrap();
                         if !state.is_active() {
                             ch3_level.update_level(0.0);
-                            clear_display(&mut display, ch);
+                            gui.clear_icon(ch);
                         }
                     }
                     common::Channel::Ch4 => {
                         ch4_leds.set_button_led_state(state).unwrap();
                         if !state.is_active() {
                             ch4_level.update_level(0.0);
-                            clear_display(&mut display, ch);
+                            gui.clear_icon(ch);
                         }
                     }
                 },
                 common::HostMessage::SetIcon(ch) => {
-                    active_icon = Some(ch);
-                    icon_cursor = 0;
+                    gui.start_icon_stream(ch);
                 }
                 common::HostMessage::ForceUpdate => {
                     rprintln!("Forcing an update.");
