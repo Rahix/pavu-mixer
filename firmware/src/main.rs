@@ -77,7 +77,6 @@ fn main() -> ! {
     let mut backlight_gpio = gpiob
         .pb0
         .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
-    backlight_gpio.set_high().unwrap();
 
     let dc = gpioa
         .pa8
@@ -359,6 +358,7 @@ fn main() -> ! {
         ch4_level,
         status_leds_ch4,
         display,
+        backlight_gpio,
         &pending_forced_update,
     );
     futures_util::pin_mut!(usb_recv_task);

@@ -177,6 +177,7 @@ pub async fn usb_recv_task<'a, B, E>(
         impl OutputPin,
         impl OutputPin,
     >,
+    mut backlight: impl OutputPin,
     pending_forced_update: &Cell<bool>,
 ) where
     B: usb_device::bus::UsbBus,
@@ -212,7 +213,40 @@ pub async fn usb_recv_task<'a, B, E>(
         }
     };
 
+    let mut suspend = true;
     loop {
+        let new_suspend = match usb_dev.state() {
+            usb_device::device::UsbDeviceState::Suspend => true,
+            usb_device::device::UsbDeviceState::Configured => false,
+            _ => suspend,
+        };
+
+        if suspend != new_suspend {
+            // If we're going into suspend, turn off all UI
+            if new_suspend {
+                let _ = backlight.set_low();
+                let _ = ch1_level.update_level(0.0);
+                let _ = ch2_level.update_level(0.0);
+                let _ = ch3_level.update_level(0.0);
+                let _ = ch4_level.update_level(0.0);
+                let _ = main_level.update_level(0.0);
+                let _ = ch1_leds.set_button_led_state(common::ChannelState::Inactive);
+                let _ = ch2_leds.set_button_led_state(common::ChannelState::Inactive);
+                let _ = ch3_leds.set_button_led_state(common::ChannelState::Inactive);
+                let _ = ch4_leds.set_button_led_state(common::ChannelState::Inactive);
+                let _ = main_leds.set_button_led_state(common::ChannelState::Inactive);
+                let _ = ch1_leds.set_sync(false);
+                let _ = ch2_leds.set_sync(false);
+                let _ = ch3_leds.set_sync(false);
+                let _ = ch4_leds.set_sync(false);
+                let _ = main_leds.set_sync(false);
+            } else {
+                let _ = backlight.set_high();
+            }
+        }
+
+        suspend = new_suspend;
+
         if {
             let mut usb_class = usb_class.borrow_mut();
             !usb_dev.poll(&mut [&mut *usb_class])
