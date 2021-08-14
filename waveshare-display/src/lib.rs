@@ -165,6 +165,15 @@ where
         self.bus.write(args).map_err(|_| DisplayError::BusError)?;
         Ok(())
     }
+
+    pub fn clear_screen(&mut self) -> Result<(), DisplayError> {
+        const ROWSATONCE: usize = 4;
+        let clearbuf = [0x00; 240 * 2 * ROWSATONCE];
+        for row in (0..(240 / ROWSATONCE)).map(|r| r * ROWSATONCE) {
+            self.write_fb_partial(0, row as u16, 239, (row + ROWSATONCE - 1) as u16, &clearbuf)?;
+        }
+        Ok(())
+    }
 }
 
 #[repr(u8)]
