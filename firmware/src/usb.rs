@@ -367,19 +367,27 @@ pub async fn usb_send_task<'a, B>(
                 }
             }
 
-            let maybe_volume = pending_volume_updates.borrow().get(ch).cloned();
-            if let Some(volume) = maybe_volume {
-                let msg = common::DeviceMessage::UpdateVolume(*ch, volume);
-                if let Err(e) = PavuMixerClass::send_device_message_async(usb_class, msg).await {
-                    rprintln!("USB write error: {:?}", e);
-                } else {
-                    let mut pv = pending_volume_updates.borrow_mut();
-                    // Prevent TOCTOU race when a new value was written while we were busy sending
-                    // the previous one.
-                    if *pv.get(ch).unwrap() == volume {
-                        pv.remove(ch);
+            // The loop for the volume update works differently to ensure we will always send the
+            // most recent value possible.
+            loop {
+                let maybe_volume = pending_volume_updates.borrow().get(ch).cloned();
+                if let Some(volume) = maybe_volume {
+                    let msg = common::DeviceMessage::UpdateVolume(*ch, volume);
+                    let result = usb_class.borrow_mut().send_device_message(msg);
+                    match result {
+                        Err(Error::WouldBlock) => {
+                            cassette::yield_now().await;
+                            continue;
+                        }
+                        Ok(()) => {
+                            pending_volume_updates.borrow_mut().remove(ch);
+                        }
+                        Err(e) => {
+                            rprintln!("USB write error: {:?}", e);
+                        }
                     }
                 }
+                break;
             }
         }
 
