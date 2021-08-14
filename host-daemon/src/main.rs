@@ -150,6 +150,13 @@ fn run(config: config::Config, mut pavu_mixer: connection::PavuMixer) -> anyhow:
                         common::Channel::Main => main.toggle_mute(&mut pa),
                         ch => channels[ch.to_index()].toggle_mute(&mut pa),
                     };
+                    match new_state {
+                        common::ChannelState::Running => log::debug!("Unmuting channel {:?}.", ch),
+                        common::ChannelState::Muted => log::debug!("Muting channel {:?}.", ch),
+                        common::ChannelState::Inactive => {
+                            log::debug!("Mute event for inactive channel {:?}", ch)
+                        }
+                    }
                     pavu_mixer.send(common::HostMessage::UpdateChannelState(ch, new_state))?;
                 }
             }
