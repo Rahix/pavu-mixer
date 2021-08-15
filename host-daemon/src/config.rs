@@ -2,20 +2,18 @@ use std::collections;
 use std::rc::Rc;
 
 pub type PropertyMatches = Rc<Vec<collections::BTreeMap<String, String>>>;
-pub type IconMappings = collections::BTreeMap<String, String>;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Config {
     pub connection: Connection,
 
-    #[serde(default)]
-    pub icon_mappings: IconMappings,
-
     pub channel_1: Channel,
     pub channel_2: Channel,
     pub channel_3: Channel,
     pub channel_4: Channel,
+
+    pub icon_mappings: Vec<IconMapping>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -29,6 +27,13 @@ pub struct Connection {
 #[serde(rename_all = "kebab-case")]
 pub struct Channel {
     pub property_matches: PropertyMatches,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct IconMapping {
+    pub icon: String,
+    pub property_matches: collections::BTreeMap<String, String>,
 }
 
 impl Default for Config {

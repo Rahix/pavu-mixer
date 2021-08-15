@@ -17,5 +17,15 @@ sudo-hack = false
 "media.name" = "Playback Stream"
 "application.name" = "java"
 
-[icon-mappings]
-"Team Fortress 2" = "steam_icon_440"
+[[icon-mappings]]
+icon = "steam_icon_440"
+
+[icon-mappings.property-matches]
+"application.name" = "Team Fortress 2"
+
+[[icon-mappings]]
+icon = "minecraft"
+
+[icon-mappings.property-matches]
+"media.name" = "Playback Stream"
+"application.name" = "java"

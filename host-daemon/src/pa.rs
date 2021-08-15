@@ -589,19 +589,22 @@ impl Stream {
         self.info.muted()
     }
 
-    pub fn get_icon_name(&self, icon_mappings: &config::IconMappings) -> Option<String> {
+    pub fn get_icon_name(&self, icon_mappings: &[config::IconMapping]) -> Option<String> {
         if let StreamInfo::SinkInput(info) = &self.info {
+            'mappings_loop: for mapping in icon_mappings.iter() {
+                for (name, value) in mapping.property_matches.iter() {
+                    if info.properties.get_str(name).as_ref() != Some(value) {
+                        continue 'mappings_loop;
+                    }
+                }
+                return Some(mapping.icon.clone());
+            }
+
             if let Some(icon) = info
                 .properties
                 .get_str(pulse::proplist::properties::APPLICATION_ICON_NAME)
             {
                 return Some(icon);
-            }
-            if let Some(application) = info
-                .properties
-                .get_str(pulse::proplist::properties::APPLICATION_NAME)
-            {
-                return icon_mappings.get(&application).map(Clone::clone);
             }
         }
         None
