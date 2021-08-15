@@ -12,8 +12,6 @@ struct StreamData {
 /// This explicitly includes the `main` "channel".
 #[derive(Debug)]
 pub struct Channel {
-    /// Label describing this channel.  Should eventually be displayed on the LCD.
-    label: String,
     /// Current fader position as last reported by the mixer.
     current_volume: f32,
     /// Attached Pulseaudio streams - their volume is controlled by this channel.
@@ -29,7 +27,6 @@ pub struct Channel {
 impl Channel {
     pub fn new(property_matches: Option<Rc<Vec<collections::BTreeMap<String, String>>>>) -> Self {
         Self {
-            label: "<inactive>".to_string(),
             current_volume: 0.0,
             attached_streams: slab::Slab::new(),
             property_matches,
