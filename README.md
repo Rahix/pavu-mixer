@@ -5,7 +5,7 @@ _Pavu Mixer_ is a hardware mixing desk for controlling
 a connected computer.  Think of it as a hardware version of
 [`pavucontrol`](https://freedesktop.org/software/pulseaudio/pavucontrol/).
 
-![Placeholder for final Pavu Mixer image](Eyecandy/Render.png)
+![Pavu Mixer in Action](Eyecandy/Picture.jpg)
 
 More pictures in [`Eyecandy/`](./Eyecandy).
 
