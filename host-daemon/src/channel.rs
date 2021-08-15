@@ -1,5 +1,4 @@
-use std::collections;
-use std::rc::Rc;
+use crate::config;
 
 #[derive(Debug)]
 struct StreamData {
@@ -17,7 +16,7 @@ pub struct Channel {
     /// Attached Pulseaudio streams - their volume is controlled by this channel.
     attached_streams: slab::Slab<StreamData>,
     /// Property matches for this channel (from the configuration).
-    property_matches: Option<Rc<Vec<collections::BTreeMap<String, String>>>>,
+    property_matches: Option<config::PropertyMatches>,
     /// Whether this channel is currently muted.
     mute: bool,
     /// The current volume for this channel, as last reported by the mixer.
@@ -25,7 +24,7 @@ pub struct Channel {
 }
 
 impl Channel {
-    pub fn new(property_matches: Option<Rc<Vec<collections::BTreeMap<String, String>>>>) -> Self {
+    pub fn new(property_matches: Option<config::PropertyMatches>) -> Self {
         Self {
             current_volume: 0.0,
             attached_streams: slab::Slab::new(),

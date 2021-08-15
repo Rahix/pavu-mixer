@@ -1,5 +1,6 @@
 #![allow(unused_variables, dead_code)]
 
+use crate::config;
 use anyhow::Context;
 use pulse::callbacks::ListResult;
 use pulse::context;
@@ -588,10 +589,7 @@ impl Stream {
         self.info.muted()
     }
 
-    pub fn get_icon_name(
-        &self,
-        icon_mappings: &std::collections::BTreeMap<String, String>,
-    ) -> Option<String> {
+    pub fn get_icon_name(&self, icon_mappings: &config::IconMappings) -> Option<String> {
         if let StreamInfo::SinkInput(info) = &self.info {
             if let Some(icon) = info
                 .properties
