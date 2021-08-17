@@ -20,9 +20,9 @@ fn get_device_serial(buf: &mut [u8; 16]) -> &str {
 
     // SAFETY: Read-only device identifiers
     let coords = unsafe { core::ptr::read_volatile(0x1FFF_F7AC as *const u32) };
-    let lotwaver = unsafe { core::ptr::read_volatile(0x1FFF_F7B0 as *const u32) };
+    let lotwafer = unsafe { core::ptr::read_volatile(0x1FFF_F7B0 as *const u32) };
 
-    let serial = lotwaver.wrapping_add(coords);
+    let serial = lotwafer.wrapping_add(coords);
     serial.numtoa_str(16, buf)
 }
 
