@@ -21,22 +21,26 @@ fn main() -> anyhow::Result<()> {
     let config: config::Config =
         confy::load("pavu-mixer").context("failed loading configuration")?;
 
-    let pavu_mixer =
-        connection::PavuMixer::connect(&config.connection).context("failed connecting to mixer")?;
+    let connection_config = config.connection.clone();
+    let mut pavu_mixer =
+        connection::PavuMixer::connect(&connection_config).context("failed connecting to mixer")?;
 
-    let error = match run(config, pavu_mixer) {
-        Ok(()) => return Ok(()),
-        Err(e) => e,
-    };
+    loop {
+        let error = match run(config.clone(), pavu_mixer) {
+            Ok(()) => return Ok(()),
+            Err(e) => e,
+        };
 
-    if error
-        .downcast_ref::<connection::DeviceDisconnectedError>()
-        .is_some()
-    {
-        log::info!("PavuMixer disconnected, shutting down.");
-        Ok(())
-    } else {
-        Err(error)
+        if error
+            .downcast_ref::<connection::DeviceDisconnectedError>()
+            .is_some()
+        {
+            log::info!("PavuMixer disconnected, retrying...");
+            pavu_mixer = connection::PavuMixer::connect(&connection_config)
+                .context("failed connecting to mixer")?;
+        } else {
+            return Err(error);
+        }
     }
 }
 
