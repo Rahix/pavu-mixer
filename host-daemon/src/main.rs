@@ -21,12 +21,11 @@ fn main() -> anyhow::Result<()> {
     let config: config::Config =
         confy::load("pavu-mixer").context("failed loading configuration")?;
 
-    let connection_config = config.connection.clone();
     let mut pavu_mixer =
-        connection::PavuMixer::connect(&connection_config).context("failed connecting to mixer")?;
+        connection::PavuMixer::connect(&config.connection).context("failed connecting to mixer")?;
 
     loop {
-        let error = match run(config.clone(), pavu_mixer) {
+        let error = match run(&config, pavu_mixer) {
             Ok(()) => return Ok(()),
             Err(e) => e,
         };
@@ -36,7 +35,7 @@ fn main() -> anyhow::Result<()> {
             .is_some()
         {
             log::info!("PavuMixer disconnected, retrying...");
-            pavu_mixer = connection::PavuMixer::connect(&connection_config)
+            pavu_mixer = connection::PavuMixer::connect(&config.connection)
                 .context("failed connecting to mixer")?;
         } else {
             return Err(error);
@@ -44,7 +43,7 @@ fn main() -> anyhow::Result<()> {
     }
 }
 
-fn run(config: config::Config, mut pavu_mixer: connection::PavuMixer) -> anyhow::Result<()> {
+fn run(config: &config::Config, mut pavu_mixer: connection::PavuMixer) -> anyhow::Result<()> {
     gtk::init()?;
 
     let mut main = channel::Channel::new(None);
