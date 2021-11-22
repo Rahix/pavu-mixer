@@ -18,8 +18,8 @@ const SAMPLE_SPEC: pulse::sample::Spec = pulse::sample::Spec {
 
 pub struct SinkInputInfo {
     index: u32,
-    name: Option<String>,
-    application: Option<String>,
+    pub name: Option<String>,
+    pub application: Option<String>,
     connected_sink: u32,
     pub properties: pulse::proplist::Proplist,
     volume: pulse::volume::ChannelVolumes,
