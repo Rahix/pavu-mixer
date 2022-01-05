@@ -1,5 +1,7 @@
 use crate::config;
 use anyhow::Context;
+use std::sync;
+use std::sync::atomic;
 use std::time;
 
 /// Error to mark that the USB device disconnected.
@@ -27,8 +29,10 @@ fn interpret_usb_error(e: rusb::Error) -> anyhow::Error {
 }
 
 pub struct PavuMixer {
-    dev_info: DeviceInfo,
-    dev_handle: rusb::DeviceHandle<rusb::GlobalContext>,
+    dev_info: sync::Arc<DeviceInfo>,
+    dev_handle: sync::Arc<rusb::DeviceHandle<rusb::GlobalContext>>,
+    incoming: sync::mpsc::Receiver<anyhow::Result<common::DeviceMessage>>,
+    teardown_flag: sync::Arc<atomic::AtomicBool>,
 }
 
 struct DeviceInfo {
@@ -91,9 +95,25 @@ impl PavuMixer {
             .set_alternate_setting(dev_info.interface, dev_info.interface_setting)
             .context("failed setting up USB interface")?;
 
+        let dev_info = sync::Arc::new(dev_info);
+        let dev_handle = sync::Arc::new(dev_handle);
+        let (tx, rx) = sync::mpsc::channel();
+        let teardown_flag = sync::Arc::new(atomic::AtomicBool::new(false));
+
+        // we spawn a thread for receiving data because `rusb` only exposes blocking APIs and we do
+        // not want to block pulseaudio with usb transfers.
+        std::thread::spawn({
+            let dev_info = dev_info.clone();
+            let dev_handle = dev_handle.clone();
+            let teardown_flag = teardown_flag.clone();
+            move || receiver_task(dev_handle, dev_info, tx, teardown_flag)
+        });
+
         Ok(Self {
             dev_info,
             dev_handle,
+            incoming: rx,
+            teardown_flag,
         })
     }
 
@@ -116,20 +136,10 @@ impl PavuMixer {
     }
 
     pub fn try_recv(&mut self) -> anyhow::Result<Option<common::DeviceMessage>> {
-        let mut buf = [0x00; 64];
-        match self.dev_handle.read_interrupt(
-            self.dev_info.ep.read_address,
-            &mut buf,
-            std::time::Duration::from_millis(50),
-        ) {
-            Ok(len) => {
-                let msg_bytes = &buf[0..len];
-                let msg = postcard::from_bytes(msg_bytes).context("failed decoding message")?;
-                log::trace!("received: {:?}", msg);
-                Ok(Some(msg))
-            }
-            Err(rusb::Error::Timeout) => Ok(None),
-            Err(e) => Err(e).map_err(interpret_usb_error),
+        match self.incoming.try_recv() {
+            Ok(val) => Some(val).transpose(),
+            Err(sync::mpsc::TryRecvError::Empty) => Ok(None),
+            Err(e) => Err(e).context("failed receiving from channel"),
         }
     }
 
@@ -145,6 +155,12 @@ impl PavuMixer {
             .map_err(interpret_usb_error)?;
 
         Ok(())
+    }
+}
+
+impl Drop for PavuMixer {
+    fn drop(&mut self) {
+        self.teardown_flag.store(true, atomic::Ordering::Relaxed);
     }
 }
 
@@ -209,5 +225,44 @@ impl Endpoints {
             write_address: found_write_ep.context("missing write endpoint")?,
             bulk_address: found_bulk_ep.context("missing bulk endpoint")?,
         })
+    }
+}
+
+fn try_recv(
+    dev_handle: &sync::Arc<rusb::DeviceHandle<rusb::GlobalContext>>,
+    dev_info: &sync::Arc<DeviceInfo>,
+) -> anyhow::Result<Option<common::DeviceMessage>> {
+    let mut buf = [0x00; 64];
+    match dev_handle.read_interrupt(
+        dev_info.ep.read_address,
+        &mut buf,
+        std::time::Duration::from_millis(50),
+    ) {
+        Ok(len) => {
+            let msg_bytes = &buf[0..len];
+            let msg = postcard::from_bytes(msg_bytes).context("failed decoding message")?;
+            log::trace!("received: {:?}", msg);
+            Ok(Some(msg))
+        }
+        Err(rusb::Error::Timeout) => Ok(None),
+        Err(e) => Err(e).map_err(interpret_usb_error),
+    }
+}
+
+fn receiver_task(
+    dev_handle: sync::Arc<rusb::DeviceHandle<rusb::GlobalContext>>,
+    dev_info: sync::Arc<DeviceInfo>,
+    tx: sync::mpsc::Sender<anyhow::Result<common::DeviceMessage>>,
+    teardown_flag: sync::Arc<atomic::AtomicBool>,
+) {
+    loop {
+        if let Some(msg) = try_recv(&dev_handle, &dev_info).transpose() {
+            tx.send(msg).expect("mpsc sender failed");
+        }
+
+        if teardown_flag.load(atomic::Ordering::Relaxed) {
+            log::debug!("Receiver task exiting.");
+            return;
+        }
     }
 }
