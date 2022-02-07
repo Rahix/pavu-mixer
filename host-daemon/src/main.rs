@@ -136,6 +136,33 @@ fn run(config: &config::Config, mut pavu_mixer: connection::PavuMixer) -> anyhow
                         }
                     }
                 }
+                pa::Event::SinkInputChanged(info) => {
+                    for (cidx, channel) in channels.iter().enumerate() {
+                        if channel.match_sink_input(&info) {
+                            // check if this channel already owns the sink-input
+                            if channel.index_for_sink_input(info.index).is_some() {
+                                break;
+                            }
+                            let ch = common::Channel::from_index(cidx);
+                            log::debug!(
+                                "Moved stream \"{}/{}\" to channel {:?}",
+                                info.name.as_deref().unwrap_or(""),
+                                info.application.as_deref().unwrap_or(""),
+                                ch
+                            );
+                            // remove from previous owner
+                            for (ch, channel) in channels.iter_mut().enumerate() {
+                                let new_state = channel.try_drop_stream(info.index);
+                                pavu_mixer.send(common::HostMessage::UpdateChannelState(
+                                    common::Channel::from_index(ch),
+                                    new_state,
+                                ))?;
+                            }
+                            pa.request_sink_input_stream(info, ch);
+                            break;
+                        }
+                    }
+                }
                 pa::Event::SinkInputRemoved(index) => {
                     for (ch, channel) in channels.iter_mut().enumerate() {
                         let new_state = channel.try_drop_stream(index);

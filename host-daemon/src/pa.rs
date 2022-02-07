@@ -17,7 +17,7 @@ const SAMPLE_SPEC: pulse::sample::Spec = pulse::sample::Spec {
 };
 
 pub struct SinkInputInfo {
-    index: u32,
+    pub index: u32,
     pub name: Option<String>,
     pub application: Option<String>,
     connected_sink: u32,
@@ -103,6 +103,9 @@ pub enum Event {
     /// A new sink-input showed up and we need to check whether it matches any of our channels - if
     /// yes, it should be attached.
     SinkInputAdded(SinkInputInfo),
+    /// Some property of a sink-input changed.  It potentially needs to be re-attached to a
+    /// different channel.
+    SinkInputChanged(SinkInputInfo),
     /// A sink-input was removed and we should probably drop it from a potentially connected
     /// channel as well.
     SinkInputRemoved(u32),
@@ -128,6 +131,9 @@ enum InternalEvent {
     /// A new sink-input was detected - we should query its information and tell the application
     /// about it.
     SinkInputPending(u32),
+    /// A sink-input change was detected - we should query its information and tell the application
+    /// about the change.
+    SinkInputChangePending(u32),
     /// We collected all relevant information for a new sink-input.
     RequestSinkInputStream {
         input_info: SinkInputInfo,
@@ -220,7 +226,9 @@ impl PulseInterface {
                     (Facility::SinkInput, Operation::Removed) => external_tx
                         .send(Event::SinkInputRemoved(index))
                         .expect("event channel error"),
-                    (Facility::SinkInput, Operation::Changed) => (), // ignore
+                    (Facility::SinkInput, Operation::Changed) => internal_tx
+                        .send(InternalEvent::SinkInputChangePending(index))
+                        .expect("event channel error"),
                     _ => unreachable!("unexpected facility: {:?}", facility),
                 };
             }))
@@ -315,6 +323,9 @@ impl PulseInterface {
                         .expect("event channel error");
                 }
                 InternalEvent::SinkInputPending(index) => self.query_added_sink_input(index),
+                InternalEvent::SinkInputChangePending(index) => {
+                    self.query_changed_sink_input(index)
+                }
                 InternalEvent::RequestSinkInputStream {
                     input_info,
                     for_channel,
@@ -410,6 +421,26 @@ impl PulseInterface {
                 ListResult::Item(info) => {
                     external_tx
                         .send(Event::SinkInputAdded(SinkInputInfo::from_pa(info)))
+                        .expect("event channel error");
+                }
+                ListResult::Error => {
+                    log::debug!("Error while querying sink-input {} - ignoring.", index)
+                }
+                ListResult::End => (),
+            }
+        });
+    }
+
+    /// Query a changed sink-input.
+    ///
+    /// Triggers [`Event::SinkInputChanged`] on completion.
+    fn query_changed_sink_input(&mut self, index: u32) {
+        self.introspector.get_sink_input_info(index, {
+            let external_tx = self.external_tx.clone();
+            move |result| match result {
+                ListResult::Item(info) => {
+                    external_tx
+                        .send(Event::SinkInputChanged(SinkInputInfo::from_pa(info)))
                         .expect("event channel error");
                 }
                 ListResult::Error => {
