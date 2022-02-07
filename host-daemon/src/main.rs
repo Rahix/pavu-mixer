@@ -34,7 +34,8 @@ fn main() -> anyhow::Result<()> {
             .downcast_ref::<connection::DeviceDisconnectedError>()
             .is_some()
         {
-            log::info!("PavuMixer disconnected, retrying...");
+            log::info!("PavuMixer disconnected, retrying in 2 seconds...");
+            std::thread::sleep(std::time::Duration::from_secs(2));
             pavu_mixer = connection::PavuMixer::connect(&config.connection)
                 .context("failed connecting to mixer")?;
         } else {
