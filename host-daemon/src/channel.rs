@@ -86,6 +86,14 @@ impl Channel {
         (&mut self.attached_streams[index].stream, index, state)
     }
 
+    pub fn index_for_sink_input(&self, sink_input: u32) -> Option<usize> {
+        self.attached_streams
+            .iter()
+            .filter(|(_, s)| s.stream.is_for_sink_input(sink_input))
+            .map(|(i, _)| i)
+            .next()
+    }
+
     pub fn try_drop_stream(&mut self, sink_input: u32) -> common::ChannelState {
         self.attached_streams
             .retain(|_, stream_data| !stream_data.stream.is_for_sink_input(sink_input));
