@@ -101,17 +101,21 @@ impl Channel {
     }
 
     pub fn update_peak(&mut self, index: usize) -> anyhow::Result<f32> {
-        match self.attached_streams[index].stream.get_recent_peak() {
-            Ok(Some(peak)) => self.attached_streams[index].last_peak = peak,
-            Err(_) => self.attached_streams[index].last_peak = 0.0,
-            _ => (),
+        if self.attached_streams.contains(index) {
+            match self.attached_streams[index].stream.get_recent_peak() {
+                Ok(Some(peak)) => self.attached_streams[index].last_peak = peak,
+                Err(_) => self.attached_streams[index].last_peak = 0.0,
+                _ => (),
+            }
+        } else {
+            log::debug!("Got peak notification for missing stream...");
         }
         Ok(self
             .attached_streams
             .iter()
             .map(|(_, s)| s.last_peak)
             .max_by(|a, b| a.partial_cmp(b).expect("wrong peak information"))
-            .expect("no streams found"))
+            .unwrap_or(0.0))
     }
 
     pub fn update_volume(&mut self, pa: &mut crate::pa::PulseInterface, volume: f32) {
