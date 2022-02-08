@@ -466,6 +466,15 @@ enum StreamInfo {
 }
 
 impl StreamInfo {
+    fn description(&self) -> String {
+        match self {
+            StreamInfo::Sink(s) => format!("Sink '{}'", s.name.as_deref().unwrap_or("unknown")),
+            StreamInfo::SinkInput(s) => {
+                format!("Sink-Input '{}'", s.name.as_deref().unwrap_or("unknown"))
+            }
+        }
+    }
+
     fn volume(&mut self) -> &mut pulse::volume::ChannelVolumes {
         match self {
             StreamInfo::Sink(s) => &mut s.volume,
@@ -508,9 +517,13 @@ impl Stream {
     }
 
     fn new(pa: &mut PulseInterface, info: StreamInfo, monitor_source: u32) -> anyhow::Result<Self> {
-        let mut stream =
-            pulse::stream::Stream::new(&mut pa.context, "Peak Detect", &SAMPLE_SPEC, None)
-                .context("failed creating monitoring stream")?;
+        let mut stream = pulse::stream::Stream::new(
+            &mut pa.context,
+            &format!("Peak Detect for {}", info.description()),
+            &SAMPLE_SPEC,
+            None,
+        )
+        .context("failed creating monitoring stream")?;
 
         let connected_channel = Rc::new(Cell::new(None));
 
