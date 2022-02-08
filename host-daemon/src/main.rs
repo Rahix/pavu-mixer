@@ -95,6 +95,7 @@ fn run(config: &config::Config, mut pavu_mixer: connection::PavuMixer) -> anyhow
                     main.detach_all();
                     let (stream, index, state) = main.attach_stream(&mut pa, stream);
                     stream.set_connected_channel(common::Channel::Main, index);
+                    stream.connect()?;
                     pavu_mixer.send(common::HostMessage::UpdateChannelState(
                         common::Channel::Main,
                         state,
@@ -126,14 +127,21 @@ fn run(config: &config::Config, mut pavu_mixer: connection::PavuMixer) -> anyhow
                 }
                 pa::Event::NewSinkInput(ch, stream) => {
                     let channel = &mut channels[ch.to_index()];
-                    let (stream, index, state) = channel.attach_stream(&mut pa, stream);
-                    stream.set_connected_channel(ch, index);
-                    pavu_mixer.send(common::HostMessage::UpdateChannelState(ch, state))?;
-                    if let Some(icon_name) = stream.get_icon_name(&config.icon_mappings) {
-                        log::debug!("Icon {:?} for Channel {:?}", icon_name, ch);
-                        if let Some(icon_data) = icon::get_icon_data(&icon_name) {
-                            pavu_mixer.send(common::HostMessage::SetIcon(ch))?;
-                            pavu_mixer.send_bulk(&icon_data)?;
+                    // only add this channel if there isn't one already
+                    if channel
+                        .index_for_sink_input(stream.sink_input_index().unwrap())
+                        .is_none()
+                    {
+                        let (stream, index, state) = channel.attach_stream(&mut pa, stream);
+                        stream.set_connected_channel(ch, index);
+                        stream.connect()?;
+                        pavu_mixer.send(common::HostMessage::UpdateChannelState(ch, state))?;
+                        if let Some(icon_name) = stream.get_icon_name(&config.icon_mappings) {
+                            log::debug!("Icon {:?} for Channel {:?}", icon_name, ch);
+                            if let Some(icon_data) = icon::get_icon_data(&icon_name) {
+                                pavu_mixer.send(common::HostMessage::SetIcon(ch))?;
+                                pavu_mixer.send_bulk(&icon_data)?;
+                            }
                         }
                     }
                 }

@@ -494,6 +494,7 @@ pub struct Stream {
     stream: pulse::stream::Stream,
     info: StreamInfo,
     connected_channel: Rc<Cell<Option<(common::Channel, usize)>>>,
+    monitor_source: u32,
 }
 
 impl std::fmt::Debug for Stream {
@@ -545,11 +546,20 @@ impl Stream {
                 .context("failed setting sink-input monitor stream")?;
         }
 
+        Ok(Self {
+            stream,
+            info,
+            connected_channel,
+            monitor_source,
+        })
+    }
+
+    pub fn connect(&mut self) -> anyhow::Result<()> {
         // TODO: do DONT_INHIBIT_AUTO_SUSPEND and DONT_MOVE properly
         let mut flags =
             pulse::stream::FlagSet::PEAK_DETECT | pulse::stream::FlagSet::ADJUST_LATENCY;
 
-        if let StreamInfo::SinkInput(_) = info {
+        if let StreamInfo::SinkInput(_) = self.info {
             flags |= pulse::stream::FlagSet::DONT_MOVE;
         }
 
@@ -559,15 +569,11 @@ impl Stream {
             ..Default::default()
         };
 
-        stream
-            .connect_record(Some(&monitor_source.to_string()), Some(&attrs), flags)
+        self.stream
+            .connect_record(Some(&self.monitor_source.to_string()), Some(&attrs), flags)
             .context("failed connecting monitoring stream")?;
 
-        Ok(Self {
-            stream,
-            info,
-            connected_channel,
-        })
+        Ok(())
     }
 
     pub fn set_connected_channel(&self, ch: common::Channel, index: usize) {
@@ -578,6 +584,13 @@ impl Stream {
         match &self.info {
             StreamInfo::Sink(_) => false,
             StreamInfo::SinkInput(info) => info.index == sink_input,
+        }
+    }
+
+    pub fn sink_input_index(&self) -> Option<u32> {
+        match &self.info {
+            StreamInfo::Sink(_) => None,
+            StreamInfo::SinkInput(info) => Some(info.index),
         }
     }
 
