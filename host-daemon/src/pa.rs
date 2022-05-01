@@ -666,6 +666,14 @@ impl Stream {
         }
         None
     }
+
+    pub fn sink_name(&self) -> Option<String> {
+        if let StreamInfo::Sink(info) = &self.info {
+            info.name.clone()
+        } else {
+            None
+        }
+    }
 }
 
 impl Drop for Stream {

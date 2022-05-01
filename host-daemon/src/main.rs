@@ -87,6 +87,8 @@ fn run(config: &config::Config, mut pavu_mixer: connection::PavuMixer) -> anyhow
     // Force an update during daemon startup so we'll have up-to-date values for all channels.
     pavu_mixer.send(common::HostMessage::ForceUpdate)?;
 
+    let mut active_sink = None;
+
     loop {
         // Handle all pending events from PulseAudio.
         for event in events.try_iter() {
@@ -96,16 +98,23 @@ fn run(config: &config::Config, mut pavu_mixer: connection::PavuMixer) -> anyhow
                     let (stream, index, state) = main.attach_stream(&mut pa, stream);
                     stream.set_connected_channel(common::Channel::Main, index);
                     stream.connect()?;
+                    active_sink = stream.sink_name();
                     pavu_mixer.send(common::HostMessage::UpdateChannelState(
                         common::Channel::Main,
                         state,
                     ))?;
                 }
                 pa::Event::NewPeakData(ch, index) => {
-                    let peak = match ch {
+                    let mut peak = match ch {
                         common::Channel::Main => main.update_peak(index)?,
                         ch => channels[ch.to_index()].update_peak(index)?,
                     };
+                    for multi in config.sink_peak_multiplier.iter() {
+                        if active_sink.as_deref() == Some(&multi.sink_name) {
+                            peak *= multi.multiplier;
+                            break;
+                        }
+                    }
                     pavu_mixer.send(common::HostMessage::UpdatePeak(ch, peak))?;
                 }
                 pa::Event::SinkInputAdded(info) => {

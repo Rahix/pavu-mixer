@@ -14,6 +14,8 @@ pub struct Config {
     pub channel_4: Channel,
 
     pub icon_mappings: Vec<IconMapping>,
+
+    pub sink_peak_multiplier: Vec<SinkPeakMultiplier>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -34,6 +36,13 @@ pub struct Channel {
 pub struct IconMapping {
     pub icon: String,
     pub property_matches: collections::BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct SinkPeakMultiplier {
+    pub sink_name: String,
+    pub multiplier: f32,
 }
 
 impl Default for Config {
