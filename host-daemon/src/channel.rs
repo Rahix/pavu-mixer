@@ -38,7 +38,16 @@ impl Channel {
         if let Some(property_matches) = &self.property_matches {
             'sets_loop: for matches_set in property_matches.iter() {
                 for (name, value) in matches_set.iter() {
-                    if info.properties.get_str(name).as_ref() != Some(value) {
+                    let value_regex = regex::Regex::new(value).ok();
+                    if let Some(actual_value) = info.properties.get_str(name).as_ref() {
+                        let verbatim_match = actual_value == value;
+                        let regex_match = value_regex.as_ref().map(|re| re.is_match(actual_value)).unwrap_or(false);
+                        if !verbatim_match && !regex_match {
+                            // this isn't it... try next match set
+                            continue 'sets_loop;
+                        }
+                    } else {
+                        // this isn't it... try next match set
                         continue 'sets_loop;
                     }
                 }
