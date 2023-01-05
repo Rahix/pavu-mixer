@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    commit-message:
+      prefix: "ci"
+    schedule:
+      interval: "monthly"
+  - package-ecosystem: "cargo"
+    directory: "firmware/"
+    commit-message:
+      prefix: "firmware"
+    schedule:
+      interval: "monthly"
+  - package-ecosystem: "cargo"
+    directory: "host-daemon/"
+    commit-message:
+      prefix: "host-daemon"
+    schedule:
+      interval: "monthly"
