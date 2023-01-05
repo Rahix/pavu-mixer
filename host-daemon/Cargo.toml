@@ -6,18 +6,18 @@ edition = "2018"
 publish = false
 
 [dependencies]
-rusb = "0.8.0"
-pulse = { version = "2.23.1", package = "libpulse-binding" }
-postcard = { version = "0.7.0", features = ["alloc"] }
+rusb = "0.9.1"
+pulse = { version = "2.26.0", package = "libpulse-binding" }
+postcard = { version = "1.0.2", features = ["alloc"] }
 common = { path = "../common/", package = "pavu-mixer-common" }
-serde = { version = "1.0.126", features = ["derive", "rc"] }
-toml = "0.5.8"
-anyhow = "1.0.40"
-log = "0.4.14"
-confy = "0.4.0"
-env_logger = "0.8.3"
-backoff = "0.3.0"
-slab = "0.4.3"
-gtk = "0.14.0"
-gdk-pixbuf = "0.14.0"
-regex = "1.5.5"
+serde = { version = "1.0.152", features = ["derive", "rc"] }
+toml = "0.5.10"
+anyhow = "1.0.68"
+log = "0.4.17"
+confy = "0.5.1"
+env_logger = "0.10.0"
+backoff = "0.4.0"
+slab = "0.4.7"
+gtk = "0.16.2"
+gdk-pixbuf = "0.16.7"
+regex = "1.7.0"

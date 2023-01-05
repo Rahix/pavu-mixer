@@ -15,6 +15,8 @@ pub struct Config {
 
     pub icon_mappings: Vec<IconMapping>,
 
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub sink_peak_multiplier: Vec<SinkPeakMultiplier>,
 }
 

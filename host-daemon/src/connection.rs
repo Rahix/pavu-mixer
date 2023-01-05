@@ -59,7 +59,7 @@ impl PavuMixer {
         let dev_info = match backoff::retry(strategy, || {
             DeviceInfo::search_device().map_err(|e| {
                 log::warn!("No USB device found, retrying...");
-                backoff::Error::Transient(e)
+                backoff::Error::transient(e)
             })
         }) {
             Ok(d) => d,
@@ -103,8 +103,8 @@ impl PavuMixer {
         // we spawn a thread for receiving data because `rusb` only exposes blocking APIs and we do
         // not want to block pulseaudio with usb transfers.
         std::thread::spawn({
-            let dev_info = dev_info.clone();
-            let dev_handle = dev_handle.clone();
+            let dev_info = sync::Arc::clone(&dev_info);
+            let dev_handle = sync::Arc::clone(&dev_handle);
             let teardown_flag = teardown_flag.clone();
             move || receiver_task(dev_handle, dev_info, tx, teardown_flag)
         });

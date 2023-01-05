@@ -19,7 +19,7 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     let config: config::Config =
-        confy::load("pavu-mixer").context("failed loading configuration")?;
+        confy::load("pavu-mixer", Some("pavu-mixer")).context("failed loading configuration")?;
 
     let mut pavu_mixer =
         connection::PavuMixer::connect(&config.connection).context("failed connecting to mixer")?;
