@@ -9,7 +9,7 @@ autobins = false
 
 [dependencies]
 cortex-m = "0.7.2"
-cortex-m-rt = "0.6.13"
+cortex-m-rt = "0.6.15"
 micromath = "2.0.0"
 panic-rtt-target = { version = "0.1.2", features = ["cortex-m"] }
 postcard = "0.7.0"
