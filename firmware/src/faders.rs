@@ -21,7 +21,7 @@ pub async fn faders_task(
             || (scaled_value == 0.0 && *prev != 0.0)
         {
             *prev = scaled_value;
-            &pending_volume_updates
+            pending_volume_updates
                 .borrow_mut()
                 .insert(ch, scaled_value)
                 .unwrap();
