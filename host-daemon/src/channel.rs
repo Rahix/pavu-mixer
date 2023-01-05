@@ -11,8 +11,6 @@ struct StreamData {
 /// This explicitly includes the `main` "channel".
 #[derive(Debug)]
 pub struct Channel {
-    /// Current fader position as last reported by the mixer.
-    current_volume: f32,
     /// Attached Pulseaudio streams - their volume is controlled by this channel.
     attached_streams: slab::Slab<StreamData>,
     /// Property matches for this channel (from the configuration).
@@ -26,7 +24,6 @@ pub struct Channel {
 impl Channel {
     pub fn new(property_matches: Option<config::PropertyMatches>) -> Self {
         Self {
-            current_volume: 0.0,
             attached_streams: slab::Slab::new(),
             property_matches,
             mute: false,
