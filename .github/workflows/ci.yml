@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - wip
+  pull_request:
+
+jobs:
+  build-firmware:
+    name: Build Firmware
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: thumbv7em-none-eabihf
+      - run: cd firmware && cargo build
+
+  build-host-daemon:
+    name: Build Host Daemon
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - run: sudo apt-get install -y libgtk-3-dev libpulse-dev
+      - run: cd host-daemon && cargo build
