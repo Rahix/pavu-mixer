@@ -8,7 +8,7 @@ publish = false
 [dependencies]
 rusb = "0.9.1"
 pulse = { version = "2.26.0", package = "libpulse-binding" }
-postcard = { version = "1.0.2", features = ["alloc"] }
+postcard = { version = "1.0.4", features = ["alloc"] }
 common = { path = "../common/", package = "pavu-mixer-common" }
 serde = { version = "1.0.152", features = ["derive", "rc"] }
 toml = "0.7.1"
