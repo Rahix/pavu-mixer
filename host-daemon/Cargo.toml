@@ -6,7 +6,7 @@ edition = "2018"
 publish = false
 
 [dependencies]
-rusb = "0.9.1"
+rusb = "0.9.2"
 pulse = { version = "2.26.0", package = "libpulse-binding" }
 postcard = { version = "1.0.2", features = ["alloc"] }
 common = { path = "../common/", package = "pavu-mixer-common" }
