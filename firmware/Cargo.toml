@@ -18,7 +18,7 @@ usb-device = "0.2.8"
 usbd-serial = "0.1.1"
 waveshare-display = { path = "../waveshare-display/" }
 common = { path = "../common/", package = "pavu-mixer-common" }
-embedded-hal = "0.2.5"
+embedded-hal = "0.2.7"
 port-expander = "0.2.1"
 shared-bus = "0.2.2"
 cassette = { git = "https://github.com/jamesmunns/cassette.git", rev = "88347314e53523d9b23ab532bb42ce5bf02f6cbe" }
