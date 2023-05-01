@@ -10,7 +10,7 @@ rusb = "0.9.1"
 pulse = { version = "2.27.1", package = "libpulse-binding" }
 postcard = { version = "1.0.4", features = ["alloc"] }
 common = { path = "../common/", package = "pavu-mixer-common" }
-serde = { version = "1.0.152", features = ["derive", "rc"] }
+serde = { version = "1.0.160", features = ["derive", "rc"] }
 toml = "0.7.2"
 anyhow = "1.0.69"
 log = "0.4.17"
