@@ -12,7 +12,7 @@ postcard = { version = "1.0.4", features = ["alloc"] }
 common = { path = "../common/", package = "pavu-mixer-common" }
 serde = { version = "1.0.152", features = ["derive", "rc"] }
 toml = "0.7.2"
-anyhow = "1.0.69"
+anyhow = "1.0.71"
 log = "0.4.17"
 confy = "0.5.1"
 env_logger = "0.10.0"
