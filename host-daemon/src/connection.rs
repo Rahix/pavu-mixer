@@ -83,7 +83,7 @@ impl PavuMixer {
             }
         }
 
-        let mut dev_handle = dev_info
+        let dev_handle = dev_info
             .device
             .open()
             .context("failed opening USB device")?;
