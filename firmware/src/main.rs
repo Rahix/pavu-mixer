@@ -396,6 +396,6 @@ fn main() -> ! {
 }
 
 #[cortex_m_rt::exception]
-fn HardFault(ef: &cortex_m_rt::ExceptionFrame) -> ! {
+unsafe fn HardFault(ef: &cortex_m_rt::ExceptionFrame) -> ! {
     panic!("Hard Fault: {:#?}", ef);
 }
