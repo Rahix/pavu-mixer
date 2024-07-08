@@ -47,13 +47,13 @@ where
         &mut self,
         delay: &mut impl hal_delay::DelayMs<u16>,
     ) -> Result<(), DisplayError> {
-        delay.delay_ms(200);
+        delay.delay_ms(10);
         self.rst_pin.set_low().map_err(|_| DisplayError::RstError)?;
-        delay.delay_ms(200);
+        delay.delay_ms(10);
         self.rst_pin
             .set_high()
             .map_err(|_| DisplayError::RstError)?;
-        delay.delay_ms(200);
+        delay.delay_ms(10);
         Ok(())
     }
 
