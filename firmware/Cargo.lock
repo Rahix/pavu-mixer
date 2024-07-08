@@ -72,8 +72,9 @@ dependencies = [
 
 [[package]]
 name = "cassette"
-version = "0.2.3"
-source = "git+https://github.com/jamesmunns/cassette.git?rev=88347314e53523d9b23ab532bb42ce5bf02f6cbe#88347314e53523d9b23ab532bb42ce5bf02f6cbe"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1739a992acb2205d0998d198b47ca52d42963c3067309d0b7440708e3e590ccf"
 
 [[package]]
 name = "cfg-if"
