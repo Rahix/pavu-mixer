@@ -1,10 +1,10 @@
 use crate::display;
 use crate::level;
 use crate::status_leds;
+use crate::ResultWarn;
 use core::cell::{Cell, RefCell};
 use embedded_hal::digital::v2::OutputPin;
 use rtt_target::rprintln;
-use crate::ResultWarn;
 
 #[derive(Debug)]
 pub enum Error {
@@ -256,31 +256,41 @@ pub async fn usb_recv_task<'a, B, E>(
                 },
                 common::HostMessage::UpdateChannelState(ch, state) => match ch {
                     common::Channel::Main => {
-                        main_leds.set_button_led_state(state).err_warn("Failed setting LEDs");
+                        main_leds
+                            .set_button_led_state(state)
+                            .err_warn("Failed setting LEDs");
                     }
                     common::Channel::Ch1 => {
-                        ch1_leds.set_button_led_state(state).err_warn("Failed setting LEDs");
+                        ch1_leds
+                            .set_button_led_state(state)
+                            .err_warn("Failed setting LEDs");
                         if !state.is_active() {
                             ch1_level.update_level(0.0);
                             gui.clear_icon(ch);
                         }
                     }
                     common::Channel::Ch2 => {
-                        ch2_leds.set_button_led_state(state).err_warn("Failed setting LEDs");
+                        ch2_leds
+                            .set_button_led_state(state)
+                            .err_warn("Failed setting LEDs");
                         if !state.is_active() {
                             ch2_level.update_level(0.0);
                             gui.clear_icon(ch);
                         }
                     }
                     common::Channel::Ch3 => {
-                        ch3_leds.set_button_led_state(state).err_warn("Failed setting LEDs");
+                        ch3_leds
+                            .set_button_led_state(state)
+                            .err_warn("Failed setting LEDs");
                         if !state.is_active() {
                             ch3_level.update_level(0.0);
                             gui.clear_icon(ch);
                         }
                     }
                     common::Channel::Ch4 => {
-                        ch4_leds.set_button_led_state(state).err_warn("Failed setting LEDs");
+                        ch4_leds
+                            .set_button_led_state(state)
+                            .err_warn("Failed setting LEDs");
                         if !state.is_active() {
                             ch4_level.update_level(0.0);
                             gui.clear_icon(ch);

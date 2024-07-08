@@ -1,6 +1,6 @@
 use core::cell::{Cell, RefCell};
-use stm32f3xx_hal::{self as hal, pac, prelude::*};
 use stm32f3xx_hal::adc::channel::Id;
+use stm32f3xx_hal::{self as hal, pac, prelude::*};
 
 use micromath::F32Ext;
 
