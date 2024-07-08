@@ -1,3 +1,4 @@
+use crate::ResultWarn;
 use core::cell::RefCell;
 
 pub async fn mute_buttons_task<'a, E, M, I2C, EBUS>(
@@ -21,25 +22,41 @@ pub async fn mute_buttons_task<'a, E, M, I2C, EBUS>(
             continue;
         }
 
-        let buttons =
-            port_expander::read_multiple([&mute_main, &mute_ch1, &mute_ch2, &mute_ch3, &mute_ch4])
-                .unwrap();
+        let buttons = match port_expander::read_multiple([
+            &mute_main, &mute_ch1, &mute_ch2, &mute_ch3, &mute_ch4,
+        ]) {
+            Ok(b) => b,
+            e => {
+                e.err_warn("Failed reading buttons");
+                continue;
+            }
+        };
 
         let mut pending_presses = pending_presses.borrow_mut();
         if !buttons[0] {
-            pending_presses.insert(common::Channel::Main, ()).unwrap();
+            pending_presses
+                .insert(common::Channel::Main, ())
+                .err_warn("Failed reporting a button event");
         }
         if !buttons[1] {
-            pending_presses.insert(common::Channel::Ch1, ()).unwrap();
+            pending_presses
+                .insert(common::Channel::Ch1, ())
+                .err_warn("Failed reporting a button event");
         }
         if !buttons[2] {
-            pending_presses.insert(common::Channel::Ch2, ()).unwrap();
+            pending_presses
+                .insert(common::Channel::Ch2, ())
+                .err_warn("Failed reporting a button event");
         }
         if !buttons[3] {
-            pending_presses.insert(common::Channel::Ch3, ()).unwrap();
+            pending_presses
+                .insert(common::Channel::Ch3, ())
+                .err_warn("Failed reporting a button event");
         }
         if !buttons[4] {
-            pending_presses.insert(common::Channel::Ch4, ()).unwrap();
+            pending_presses
+                .insert(common::Channel::Ch4, ())
+                .err_warn("Failed reporting a button event");
         }
         drop(pending_presses);
 

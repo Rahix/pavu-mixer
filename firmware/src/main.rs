@@ -15,6 +15,21 @@ mod mute;
 mod status_leds;
 mod usb;
 
+trait ResultWarn {
+    fn err_warn(self, msg: &str);
+}
+
+impl<T, E> ResultWarn for Result<T, E> {
+    fn err_warn(self, msg: &str) {
+        match self {
+            Ok(_) => (),
+            Err(_) => {
+                rprintln!("Error: {}", msg);
+            }
+        }
+    }
+}
+
 fn get_device_serial(buf: &mut [u8; 16]) -> &str {
     use numtoa::NumToA;
 
@@ -248,11 +263,21 @@ fn main() -> ! {
         button_led2: pca9555_pins.io1_7.into_output().unwrap(),
     };
 
-    let _ = status_leds_main.set_sync(false);
-    let _ = status_leds_ch1.set_sync(false);
-    let _ = status_leds_ch2.set_sync(false);
-    let _ = status_leds_ch3.set_sync(false);
-    let _ = status_leds_ch4.set_sync(false);
+    status_leds_main
+        .set_sync(false)
+        .err_warn("Failed setting LEDs");
+    status_leds_ch1
+        .set_sync(false)
+        .err_warn("Failed setting LEDs");
+    status_leds_ch2
+        .set_sync(false)
+        .err_warn("Failed setting LEDs");
+    status_leds_ch3
+        .set_sync(false)
+        .err_warn("Failed setting LEDs");
+    status_leds_ch4
+        .set_sync(false)
+        .err_warn("Failed setting LEDs");
 
     let mute_main = pca9555_pins.io0_1;
     let mute_ch1 = pca9555_pins.io0_4;
@@ -261,24 +286,25 @@ fn main() -> ! {
     let mute_ch4 = pca9555_pins.io1_5;
 
     // Read inputs once to clear interrupt
-    port_expander::read_multiple([&mute_main, &mute_ch1, &mute_ch2, &mute_ch3, &mute_ch4]).unwrap();
+    port_expander::read_multiple([&mute_main, &mute_ch1, &mute_ch2, &mute_ch3, &mute_ch4])
+        .err_warn("Failed reading buttons");
 
     // Set all outputs appropriately
     status_leds_main
         .set_button_led(status_leds::Led::Green)
-        .unwrap();
+        .err_warn("Failed setting LEDs");
     status_leds_ch1
         .set_button_led(status_leds::Led::Off)
-        .unwrap();
+        .err_warn("Failed setting LEDs");
     status_leds_ch2
         .set_button_led(status_leds::Led::Off)
-        .unwrap();
+        .err_warn("Failed setting LEDs");
     status_leds_ch3
         .set_button_led(status_leds::Led::Off)
-        .unwrap();
+        .err_warn("Failed setting LEDs");
     status_leds_ch4
         .set_button_led(status_leds::Led::Off)
-        .unwrap();
+        .err_warn("Failed setting LEDs");
 
     if pca_int.is_low().unwrap() {
         rprintln!("PCA interrupt is asserted when it should not be!");
