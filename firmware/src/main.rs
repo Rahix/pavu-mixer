@@ -125,7 +125,13 @@ fn main() -> ! {
     );
 
     let mut display = waveshare_display::WaveshareDisplay::new(spi, cs, dc, rst);
-    display.initialize(&mut delay).unwrap();
+    for _ in 0..6 {
+        if let Err(e) = display.initialize(&mut delay) {
+            rprintln!("Failed to initialize the display: {:?}", e);
+        } else {
+            break;
+        }
+    }
 
     let gui = crate::display::Gui::new(display, backlight);
 
