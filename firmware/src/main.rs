@@ -45,7 +45,7 @@ fn get_device_serial(buf: &mut [u8; 16]) -> &str {
 fn main() -> ! {
     rtt_target::rtt_init_print!();
 
-    let mut dp = pac::Peripherals::take().unwrap();
+    let dp = pac::Peripherals::take().unwrap();
     let cp = cortex_m::Peripherals::take().unwrap();
 
     /*
@@ -106,13 +106,13 @@ fn main() -> ! {
 
     let sck = gpioa
         .pa5
-        .into_af5_push_pull(&mut gpioa.moder, &mut gpioa.otyper, &mut gpioa.afrl);
+        .into_af_push_pull(&mut gpioa.moder, &mut gpioa.otyper, &mut gpioa.afrl);
     let miso = gpioa
         .pa6
-        .into_af5_push_pull(&mut gpioa.moder, &mut gpioa.otyper, &mut gpioa.afrl);
+        .into_af_push_pull(&mut gpioa.moder, &mut gpioa.otyper, &mut gpioa.afrl);
     let mosi = gpioa
         .pa7
-        .into_af5_push_pull(&mut gpioa.moder, &mut gpioa.otyper, &mut gpioa.afrl);
+        .into_af_push_pull(&mut gpioa.moder, &mut gpioa.otyper, &mut gpioa.afrl);
 
     let spi = stm32f3xx_hal::spi::Spi::new(
         dp.SPI1,
@@ -155,7 +155,7 @@ fn main() -> ! {
      * ===========================
      */
 
-    let mut adc_common = hal::adc::CommonAdc::new(dp.ADC1_2, &clocks, &mut rcc.ahb);
+    let adc_common = hal::adc::CommonAdc::new(dp.ADC1_2, &clocks, &mut rcc.ahb);
     let adc1 = hal::adc::Adc::new(
         dp.ADC1,
         hal::adc::config::Config::default(),
@@ -176,20 +176,23 @@ fn main() -> ! {
      * =======================================================
      */
 
+    // deprecated function `stm32f3xx_hal::pwm::tim1`: needs refactoring and might violate safety
+    // rules conflicting with the timer API
+    #[allow(deprecated)]
     let tim1_channels = hal::pwm::tim1(dp.TIM1, 1280, 100.Hz(), &clocks);
 
     let pe9 = gpioe
         .pe9
-        .into_af2_push_pull(&mut gpioe.moder, &mut gpioe.otyper, &mut gpioe.afrh);
+        .into_af_push_pull(&mut gpioe.moder, &mut gpioe.otyper, &mut gpioe.afrh);
     let pe11 = gpioe
         .pe11
-        .into_af2_push_pull(&mut gpioe.moder, &mut gpioe.otyper, &mut gpioe.afrh);
+        .into_af_push_pull(&mut gpioe.moder, &mut gpioe.otyper, &mut gpioe.afrh);
     let pe13 = gpioe
         .pe13
-        .into_af2_push_pull(&mut gpioe.moder, &mut gpioe.otyper, &mut gpioe.afrh);
+        .into_af_push_pull(&mut gpioe.moder, &mut gpioe.otyper, &mut gpioe.afrh);
     let pe14 = gpioe
         .pe14
-        .into_af2_push_pull(&mut gpioe.moder, &mut gpioe.otyper, &mut gpioe.afrh);
+        .into_af_push_pull(&mut gpioe.moder, &mut gpioe.otyper, &mut gpioe.afrh);
 
     let ch1_level = level::PwmLevel::new(tim1_channels.0.output_to_pe9(pe9));
     let ch2_level = level::PwmLevel::new(tim1_channels.1.output_to_pe11(pe11));
@@ -206,11 +209,11 @@ fn main() -> ! {
     let mut scl =
         gpiob
             .pb6
-            .into_af4_open_drain(&mut gpiob.moder, &mut gpiob.otyper, &mut gpiob.afrl);
+            .into_af_open_drain(&mut gpiob.moder, &mut gpiob.otyper, &mut gpiob.afrl);
     let mut sda =
         gpiob
             .pb7
-            .into_af4_open_drain(&mut gpiob.moder, &mut gpiob.otyper, &mut gpiob.afrl);
+            .into_af_open_drain(&mut gpiob.moder, &mut gpiob.otyper, &mut gpiob.afrl);
     scl.internal_pull_up(&mut gpiob.pupdr, true);
     sda.internal_pull_up(&mut gpiob.pupdr, true);
 
@@ -332,12 +335,12 @@ fn main() -> ! {
 
     let usb = hal::usb::Peripheral {
         usb: dp.USB,
-        pin_dm: gpioa.pa11.into_af14_push_pull(
+        pin_dm: gpioa.pa11.into_af_push_pull(
             &mut gpioa.moder,
             &mut gpioa.otyper,
             &mut gpioa.afrh,
         ),
-        pin_dp: usb_dp.into_af14_push_pull(&mut gpioa.moder, &mut gpioa.otyper, &mut gpioa.afrh),
+        pin_dp: usb_dp.into_af_push_pull(&mut gpioa.moder, &mut gpioa.otyper, &mut gpioa.afrh),
     };
     let usb_bus = hal::usb::UsbBus::new(usb);
 
