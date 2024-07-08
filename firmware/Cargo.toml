@@ -1,6 +1,6 @@
 [package]
 authors = ["Rahix <rahix@rahix.de>"]
-edition = "2018"
+edition = "2021"
 readme = "README.md"
 name = "pavu-mixer-firmware"
 version = "0.0.0"
