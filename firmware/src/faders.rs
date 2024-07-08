@@ -1,15 +1,16 @@
 use core::cell::{Cell, RefCell};
 use stm32f3xx_hal::{self as hal, pac, prelude::*};
+use stm32f3xx_hal::adc::channel::Id;
 
 use micromath::F32Ext;
 
 pub async fn faders_task(
     mut adc1: hal::adc::Adc<pac::ADC1>,
-    mut fader_main_adc: impl embedded_hal::adc::Channel<pac::ADC1, ID = u8>,
-    mut fader_ch1_adc: impl embedded_hal::adc::Channel<pac::ADC1, ID = u8>,
-    mut fader_ch2_adc: impl embedded_hal::adc::Channel<pac::ADC1, ID = u8>,
-    mut fader_ch3_adc: impl embedded_hal::adc::Channel<pac::ADC1, ID = u8>,
-    mut fader_ch4_adc: impl embedded_hal::adc::Channel<pac::ADC1, ID = u8>,
+    mut fader_main_adc: impl embedded_hal::adc::Channel<pac::ADC1, ID = Id>,
+    mut fader_ch1_adc: impl embedded_hal::adc::Channel<pac::ADC1, ID = Id>,
+    mut fader_ch2_adc: impl embedded_hal::adc::Channel<pac::ADC1, ID = Id>,
+    mut fader_ch3_adc: impl embedded_hal::adc::Channel<pac::ADC1, ID = Id>,
+    mut fader_ch4_adc: impl embedded_hal::adc::Channel<pac::ADC1, ID = Id>,
     pending_volume_updates: &RefCell<heapless::LinearMap<common::Channel, f32, 5>>,
     pending_forced_update: &Cell<bool>,
 ) {

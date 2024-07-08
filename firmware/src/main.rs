@@ -114,11 +114,12 @@ fn main() -> ! {
         .pa7
         .into_af5_push_pull(&mut gpioa.moder, &mut gpioa.otyper, &mut gpioa.afrl);
 
-    let spi = stm32f3xx_hal::spi::Spi::spi1(
+    let spi = stm32f3xx_hal::spi::Spi::new(
         dp.SPI1,
         (sck, miso, mosi),
-        waveshare_display::SPI_MODE,
-        16000000.Hz(),
+        hal::spi::config::Config::default()
+            .frequency(16.MHz())
+            .mode(waveshare_display::SPI_MODE),
         clocks,
         &mut rcc.apb2,
     );
@@ -154,12 +155,12 @@ fn main() -> ! {
      * ===========================
      */
 
-    let adc1 = hal::adc::Adc::adc1(
+    let mut adc_common = hal::adc::CommonAdc::new(dp.ADC1_2, &clocks, &mut rcc.ahb);
+    let adc1 = hal::adc::Adc::new(
         dp.ADC1,
-        &mut dp.ADC1_2,
-        &mut rcc.ahb,
-        hal::adc::CkMode::default(),
-        clocks,
+        hal::adc::config::Config::default(),
+        &clocks,
+        &adc_common,
     );
 
     let fader_ch1_adc = gpioa.pa0.into_analog(&mut gpioa.moder, &mut gpioa.pupdr);
