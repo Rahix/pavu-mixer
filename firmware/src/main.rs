@@ -248,6 +248,12 @@ fn main() -> ! {
         button_led2: pca9555_pins.io1_7.into_output().unwrap(),
     };
 
+    let _ = status_leds_main.set_sync(false);
+    let _ = status_leds_ch1.set_sync(false);
+    let _ = status_leds_ch2.set_sync(false);
+    let _ = status_leds_ch3.set_sync(false);
+    let _ = status_leds_ch4.set_sync(false);
+
     let mute_main = pca9555_pins.io0_1;
     let mute_ch1 = pca9555_pins.io0_4;
     let mute_ch2 = pca9555_pins.io0_7;

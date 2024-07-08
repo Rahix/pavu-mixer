@@ -18,7 +18,6 @@ where
     L2: embedded_hal::digital::v2::OutputPin<Error = E>,
 {
     // TODO: Do we even need the sync_leds anymore?
-    #[allow(dead_code)]
     pub fn set_sync(&mut self, state: bool) -> Result<(), S::Error> {
         if state {
             self.sync_led.set_low()
