@@ -6,6 +6,7 @@ use core::cell::{Cell, RefCell};
 use embedded_hal::digital::v2::OutputPin;
 use rtt_target::rprintln;
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum Error {
     Usb(usb_device::UsbError),
