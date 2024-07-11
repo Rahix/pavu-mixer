@@ -248,29 +248,29 @@ fn main() -> ! {
     let pca9555_pins = pca9555.split();
 
     let mut status_leds_main = status_leds::ChannelStatusLeds {
-        sync_led: pca9555_pins.io0_0.into_output().unwrap(),
-        button_led1: pca9555_pins.io0_2.into_output().unwrap(),
-        button_led2: pca9555_pins.io0_3.into_output().unwrap(),
+        sync_led: pca9555_pins.io0_0.into_output_high().unwrap(),
+        button_led1: pca9555_pins.io0_2.into_output_high().unwrap(),
+        button_led2: pca9555_pins.io0_3.into_output_high().unwrap(),
     };
     let mut status_leds_ch1 = status_leds::ChannelStatusLeds {
-        sync_led: pca9536_pins.io0.into_output().unwrap(),
-        button_led1: pca9555_pins.io0_5.into_output().unwrap(),
-        button_led2: pca9555_pins.io0_6.into_output().unwrap(),
+        sync_led: pca9536_pins.io0.into_output_high().unwrap(),
+        button_led1: pca9555_pins.io0_5.into_output_high().unwrap(),
+        button_led2: pca9555_pins.io0_6.into_output_high().unwrap(),
     };
     let mut status_leds_ch2 = status_leds::ChannelStatusLeds {
-        sync_led: pca9536_pins.io1.into_output().unwrap(),
-        button_led1: pca9555_pins.io1_0.into_output().unwrap(),
-        button_led2: pca9555_pins.io1_1.into_output().unwrap(),
+        sync_led: pca9536_pins.io1.into_output_high().unwrap(),
+        button_led1: pca9555_pins.io1_0.into_output_high().unwrap(),
+        button_led2: pca9555_pins.io1_1.into_output_high().unwrap(),
     };
     let mut status_leds_ch3 = status_leds::ChannelStatusLeds {
-        sync_led: pca9536_pins.io2.into_output().unwrap(),
-        button_led1: pca9555_pins.io1_3.into_output().unwrap(),
-        button_led2: pca9555_pins.io1_4.into_output().unwrap(),
+        sync_led: pca9536_pins.io2.into_output_high().unwrap(),
+        button_led1: pca9555_pins.io1_3.into_output_high().unwrap(),
+        button_led2: pca9555_pins.io1_4.into_output_high().unwrap(),
     };
     let mut status_leds_ch4 = status_leds::ChannelStatusLeds {
-        sync_led: pca9536_pins.io3.into_output().unwrap(),
-        button_led1: pca9555_pins.io1_6.into_output().unwrap(),
-        button_led2: pca9555_pins.io1_7.into_output().unwrap(),
+        sync_led: pca9536_pins.io3.into_output_high().unwrap(),
+        button_led1: pca9555_pins.io1_6.into_output_high().unwrap(),
+        button_led2: pca9555_pins.io1_7.into_output_high().unwrap(),
     };
 
     status_leds_main
