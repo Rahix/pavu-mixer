@@ -36,8 +36,12 @@ fn main() -> anyhow::Result<()> {
         {
             log::info!("PavuMixer disconnected, retrying in 2 seconds...");
             std::thread::sleep(std::time::Duration::from_secs(2));
-            pavu_mixer = connection::PavuMixer::connect(&config.connection)
-                .context("failed connecting to mixer")?;
+            pavu_mixer = if let Ok(m) = connection::PavuMixer::connect(&config.connection) {
+                m
+            } else {
+                log::info!("PavuMixer disappeared, stopping.");
+                return Ok(());
+            }
         } else {
             return Err(error);
         }
