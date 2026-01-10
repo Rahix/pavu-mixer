@@ -21,8 +21,10 @@ fn main() -> anyhow::Result<()> {
     let config: config::Config =
         confy::load("pavu-mixer", Some("pavu-mixer")).context("failed loading configuration")?;
 
-    let mut pavu_mixer =
-        connection::PavuMixer::connect(&config.connection).context("failed connecting to mixer")?;
+    let Ok(mut pavu_mixer) = connection::PavuMixer::connect(&config.connection) else {
+        log::info!("PavuMixer never appeared, stopping.");
+        return Ok(());
+    };
 
     loop {
         let error = match run(&config, pavu_mixer) {
