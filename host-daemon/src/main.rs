@@ -154,7 +154,11 @@ fn run(config: &config::Config, mut pavu_mixer: connection::PavuMixer) -> anyhow
                             if let Some(icon_data) = icon::get_icon_data(&icon_name) {
                                 pavu_mixer.send(common::HostMessage::SetIcon(ch))?;
                                 pavu_mixer.send_bulk(&icon_data)?;
+                            } else {
+                                log::warn!("Could not get icon {:?}", icon_name);
                             }
+                        } else {
+                            log::debug!("No icon for channel {:?}", ch);
                         }
                     }
                 }
