@@ -650,7 +650,17 @@ impl Stream {
         if let StreamInfo::SinkInput(info) = &self.info {
             'mappings_loop: for mapping in icon_mappings.iter() {
                 for (name, value) in mapping.property_matches.iter() {
-                    if info.properties.get_str(name).as_ref() != Some(value) {
+                    if let Some(actual_value) = info.properties.get_str(name).as_ref() {
+                        let verbatim_match = actual_value == value;
+                        let value_regex = regex::Regex::new(value).ok();
+                        let regex_match = value_regex
+                            .as_ref()
+                            .map(|re| re.is_match(actual_value))
+                            .unwrap_or(false);
+                        if !verbatim_match && !regex_match {
+                            continue 'mappings_loop;
+                        }
+                    } else {
                         continue 'mappings_loop;
                     }
                 }
