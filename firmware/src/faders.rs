@@ -2,8 +2,6 @@ use core::cell::{Cell, RefCell};
 use stm32f3xx_hal::adc::channel::Id;
 use stm32f3xx_hal::{self as hal, pac, prelude::*};
 
-use micromath::F32Ext;
-
 pub async fn faders_task(
     mut adc1: hal::adc::Adc<pac::ADC1>,
     mut fader_main_adc: impl embedded_hal::adc::Channel<pac::ADC1, ID = Id>,
